@@ -15,8 +15,9 @@
     "memory-smoke": "node scripts/browser-memory-smoke.mjs",
     "diff-evidence-smoke": "node scripts/diff-evidence-smoke.mjs",
     "verification-engine-smoke": "node scripts/verification-engine-smoke.mjs",
+    "verification-state-smoke": "node scripts/verification-state-smoke.mjs",
     "snapshot-smoke": "node scripts/snapshot-smoke.mjs",
     "recovery-smoke": "node scripts/recovery-smoke.mjs",
-    "test": "node scripts/smoke.mjs && node scripts/browser-memory-smoke.mjs && node scripts/agent-smoke.mjs && node scripts/native-worker-smoke.mjs && node scripts/diff-evidence-smoke.mjs && node scripts/verification-engine-smoke.mjs && node scripts/snapshot-smoke.mjs && node scripts/recovery-smoke.mjs && node scripts/core-smoke.mjs"
+    "test": "node scripts/smoke.mjs && node scripts/browser-memory-smoke.mjs && node scripts/agent-smoke.mjs && node scripts/native-worker-smoke.mjs && node scripts/diff-evidence-smoke.mjs && node scripts/verification-engine-smoke.mjs && node scripts/verification-state-smoke.mjs && node scripts/snapshot-smoke.mjs && node scripts/recovery-smoke.mjs && node scripts/core-smoke.mjs"
   }
 }
