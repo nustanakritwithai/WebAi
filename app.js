@@ -1,5 +1,5 @@
 (() => {
-  document.documentElement.dataset.executionTarget = "browser";
+  document.documentElement.dataset.executionTarget = "webai-native";
 
   const load = (src, done) => {
     const script = document.createElement("script");
@@ -10,12 +10,6 @@
   };
 
   load("./app-core.js", () => {
-    load("./capability-bridge.js", () => {
-      load("./browserpod-storage-lock-fix.js", () => {
-        Promise.resolve(window.WebAiBrowserPodPatchReady)
-          .catch(() => {})
-          .finally(() => load("./browser-linux-worker-v03.js"));
-      });
-    });
+    load("./capability-bridge.js", () => load("./native-core-ui.js"));
   });
 })();
