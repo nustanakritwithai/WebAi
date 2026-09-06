@@ -11,7 +11,13 @@
 
   load("./app-core.js", () => {
     load("./capability-bridge.js", () => {
-      load("./browser-linux-worker.js", () => load("./browser-linux-hotfix.js"));
+      load("./browserpod-storage-lock-fix.js", () => {
+        Promise.resolve(window.WebAiBrowserPodPatchReady)
+          .catch(() => {})
+          .finally(() => {
+            load("./browser-linux-worker.js", () => load("./browser-linux-hotfix.js"));
+          });
+      });
     });
   });
 })();
