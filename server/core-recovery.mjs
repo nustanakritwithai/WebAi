@@ -9,6 +9,11 @@ function bounded(value, limit = 240) {
   return String(value || "").slice(0, limit);
 }
 
+function safeErrorCode(error) {
+  const message = String(error?.message || "");
+  return /^[a-z0-9_]{1,80}$/i.test(message) ? message : "snapshot_recovery_error";
+}
+
 function publicFiles(files) {
   if (!Array.isArray(files)) return [];
   return files.slice(0, 32).map((file) => ({
@@ -170,7 +175,7 @@ export async function recoverOwnerState({ ownerId, statePath, snapshotStore, wit
         addEvent(task, "recovery_failed", {
           error: task.error,
           executionId: execution.executionId,
-          snapshotError: bounded(error?.message, 120),
+          snapshotError: safeErrorCode(error),
         });
         failed += 1;
       }
