@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07101f">
+  <meta name="description" content="WebAi Model Benchmark — deterministic capability lab">
+  <title>WebAi · Model Benchmark</title>
+  <link rel="stylesheet" href="./benchmark.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="WebAi Home">
+      <span class="logo">W</span>
+      <span><b>WebAi</b><small>MODEL BENCHMARK · CB-1.0</small></span>
+    </a>
+    <nav>
+      <a href="./">Workspace</a>
+      <a class="active" href="./benchmark.html">Benchmark</a>
+      <a href="./roadmap.html">Roadmap</a>
+    </nav>
+    <div class="connectionPill"><span id="connectionDot"></span><b id="connectionLabel">กำลังตรวจ Backend</b></div>
+  </header>
+
+  <main class="page">
+    <section class="hero">
+      <div>
+        <span class="eyebrow">DETERMINISTIC CAPABILITY LAB</span>
+        <h1>วัดว่าโมเดลเล็ก <span>เก่งขึ้นจริงแค่ไหน</span></h1>
+        <p>30 ข้อ · 7 หมวด · rule-based scoring · เก็บ baseline และเปรียบเทียบ WebAi Assisted โดยไม่ใช้ LLM อีกตัวมาตัดสินคะแนน</p>
+      </div>
+      <div class="heroScore">
+        <small>LATEST SCORE</small>
+        <strong id="latestScore">—</strong>
+        <span id="latestMode">ยังไม่มีผลทดสอบ</span>
+      </div>
+    </section>
+
+    <section class="panel connectionPanel">
+      <div>
+        <span class="sectionKicker">CONNECTION</span>
+        <h2>OpenTyphoon Secret Proxy</h2>
+        <p>Benchmark เรียกโมเดลผ่าน Backend เดิมของ WebAi เท่านั้น API key ไม่ถูกส่งลง browser</p>
+      </div>
+      <div class="connectionControls">
+        <label>
+          <span>BACKEND API BASE URL</span>
+          <input id="apiBase" type="url" inputmode="url" autocomplete="off" spellcheck="false">
+        </label>
+        <button id="connectBtn" class="secondary" type="button">Check Backend</button>
+      </div>
+      <div class="connectionMeta">
+        <span>Model <b id="modelName">—</b></span>
+        <span>Provider <b id="providerName">—</b></span>
+        <span>Benchmark <b>CB-1.0</b></span>
+      </div>
+    </section>
+
+    <section class="runGrid">
+      <article class="panel runCard">
+        <span class="sectionKicker">RUN A</span>
+        <h2>Raw Model Baseline</h2>
+        <p>ตอบโจทย์หนึ่งรอบ ไม่มี reflection layer ใช้เป็นฐานอ้างอิงก่อนเพิ่มระบบรอบโมเดล</p>
+        <button id="baselineBtn" class="primary" type="button" disabled>Run Baseline · 30 tests</button>
+      </article>
+      <article class="panel runCard assisted">
+        <span class="sectionKicker">RUN B</span>
+        <h2>WebAi Assisted</h2>
+        <p>รอบแรกตอบตามปกติ แล้ว WebAi ส่ง candidate เดิมกลับไปให้โมเดลตรวจและแก้ก่อนให้ deterministic grader ตัดสิน</p>
+        <button id="assistedBtn" class="primary" type="button" disabled>Run Assisted · Answer + Reflect</button>
+      </article>
+      <article class="panel runCard compact">
+        <span class="sectionKicker">CONTROL</span>
+        <h2>Run state</h2>
+        <div class="progressTrack"><span id="progressBar"></span></div>
+        <b id="progressText">รอเริ่ม Benchmark</b>
+        <button id="stopBtn" class="danger" type="button" disabled>Stop</button>
+      </article>
+    </section>
+
+    <section class="scoreGrid">
+      <article class="scoreCard"><small>OVERALL</small><strong id="overallScore">—</strong><span>/ 100</span></article>
+      <article class="scoreCard"><small>PASSED</small><strong id="passedCount">—</strong><span>/ 30</span></article>
+      <article class="scoreCard"><small>UPLIFT</small><strong id="upliftScore">—</strong><span>vs baseline</span></article>
+      <article class="scoreCard"><small>AVG CALL</small><strong id="avgLatency">—</strong><span>latency</span></article>
+    </section>
+
+    <section class="panel">
+      <div class="sectionHead">
+        <div><span class="sectionKicker">CAPABILITY PROFILE</span><h2>คะแนนแยกหมวด</h2></div>
+        <button id="exportBtn" class="secondary" type="button" disabled>Export JSON</button>
+      </div>
+      <div id="categoryScores" class="categoryScores"></div>
+    </section>
+
+    <section class="panel">
+      <div class="sectionHead">
+        <div><span class="sectionKicker">30 TESTS</span><h2>ผลรายข้อ</h2></div>
+        <span class="methodBadge">Deterministic grader</span>
+      </div>
+      <div id="testResults" class="testResults">
+        <div class="empty">รัน Benchmark แล้วผลคำตอบและกติกาการให้คะแนนแต่ละข้อจะแสดงที่นี่</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="sectionHead">
+        <div><span class="sectionKicker">HISTORY</span><h2>Baseline / Assisted history</h2></div>
+        <button id="clearHistoryBtn" class="secondary" type="button">Clear history</button>
+      </div>
+      <div id="history" class="history"></div>
+    </section>
+
+    <section class="methodology">
+      <h2>วิธีอ่านคะแนน</h2>
+      <p><b>CB-1.0</b> เป็น transparent regression benchmark: คำตอบที่ถูกต้องถูกตรวจด้วย exact match, numeric match, code normalization, ordered constraints และ required terms ที่อยู่ใน browser เท่านั้น จึงเหมาะกับการวัดก่อน/หลังระบบรอบโมเดลแบบทำซ้ำได้ แต่ยังไม่ใช่ held-out benchmark ป้องกันการฝึกทับชุดข้อสอบ.</p>
+    </section>
+  </main>
+
+  <script src="./benchmark.js"></script>
+</body>
+</html>
