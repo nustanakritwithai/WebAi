@@ -27,6 +27,7 @@ jobs:
           node --check native-core-ui.js
           node --check scripts/agent-smoke.mjs
           node --check scripts/native-worker-smoke.mjs
+          node --check scripts/smoke.mjs
       - name: Native core contract
         run: |
           grep -q 'executionTarget = "webai-native"' app.js
@@ -34,7 +35,14 @@ jobs:
           grep -q 'webai-native-v0.1' server/native-worker.mjs
           grep -q 'native_path_denied' server/native-worker.mjs
           grep -q 'native_symlink_denied' server/native-worker.mjs
-          ! grep -q 'browserpod' app.js
-          ! grep -q 'browser-linux' app.js
+          grep -q 'nativeWorker' server/index.mjs
+          grep -q 'webaiCore' server/index.mjs
+          ! grep -qi 'browserpod' app.js
+          ! grep -qi 'browser-linux' app.js
+          ! grep -q 'OMP_COMMAND' server/index.mjs
+          ! grep -q 'OMP_PROVIDER' server/index.mjs
+          ! grep -q 'runOmp' server/index.mjs
+          ! grep -q '/api/omp/prompt' server/index.mjs
+          ! grep -q 'caps.omp' capability-bridge.js
       - name: Test suite
         run: npm test
