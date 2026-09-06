@@ -19,28 +19,22 @@ jobs:
       - name: Syntax check
         run: |
           node --check server/index.mjs
+          node --check server/agent.mjs
+          node --check server/native-worker.mjs
           node --check app.js
           node --check app-core.js
           node --check capability-bridge.js
-          node --check browserpod-storage-lock-fix.js
-          node --check browser-linux-worker-v03.js
-          node --check coi-sw.js
-      - name: Browser worker contract
+          node --check native-core-ui.js
+          node --check scripts/agent-smoke.mjs
+          node --check scripts/native-worker-smoke.mjs
+      - name: Native core contract
         run: |
-          grep -q 'executionTarget = "browser"' app.js
-          grep -q 'browserpod-storage-lock-fix.js' app.js
-          grep -q 'browser-linux-worker-v03.js' app.js
-          grep -q 'minimalMode: true' browser-linux-worker-v03.js
-          grep -q 'พร้อม Clone / Sync WebAi' browser-linux-worker-v03.js
-          grep -q 'ensureCommandTerminal' browser-linux-worker-v03.js
-          grep -q 'state.operation' browser-linux-worker-v03.js
-          grep -q 'command -v git' browser-linux-worker-v03.js
-          grep -q 'createDefaultTerminal' browser-linux-worker-v03.js
-          ! grep -q 'runPreflight' browser-linux-worker-v03.js
-          ! grep -q 'browser-linux-worker.js' app.js
-          ! grep -q 'browser-linux-operation-guard.js' app.js
-          ! grep -q 'browser-linux-running-ui-fix.js' app.js
-          ! grep -q 'browser-linux-hotfix.js' app.js
-          grep -q 'Cross-Origin-Embedder-Policy' coi-sw.js
-      - name: API smoke test
-        run: npm run smoke
+          grep -q 'executionTarget = "webai-native"' app.js
+          grep -q 'native-core-ui.js' app.js
+          grep -q 'webai-native-v0.1' server/native-worker.mjs
+          grep -q 'native_path_denied' server/native-worker.mjs
+          grep -q 'native_symlink_denied' server/native-worker.mjs
+          ! grep -q 'browserpod' app.js
+          ! grep -q 'browser-linux' app.js
+      - name: Test suite
+        run: npm test
