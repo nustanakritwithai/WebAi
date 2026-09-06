@@ -10,6 +10,8 @@
   };
 
   load("./app-core.js", () => {
-    load("./capability-bridge.js", () => load("./native-core-ui.js"));
+    load("./capability-bridge.js", () => {
+      load("./native-core-ui.js", () => load("./core-bridge.js"));
+    });
   });
 })();
