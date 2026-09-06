@@ -33,6 +33,7 @@
     supported: () => Boolean(worker && window.indexedDB),
     init: () => call("init"),
     prepare: (payload) => call("prepare", payload),
+    selectEcc: (payload) => call("selectEcc", payload),
     recordExchange: (payload) => call("recordExchange", payload),
     saveTask: (task) => call("saveTask", { task }),
     async sanitize(text, limit) {

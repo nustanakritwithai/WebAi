@@ -10,6 +10,7 @@ import {
   sanitizeTask,
   tokenize
 } from "./browser-memory-core.js";
+import { selectEccPolicy } from "./ecc-policy-core.js";
 
 const DB_NAME = "webai-browser-memory";
 const DB_VERSION = 1;
@@ -67,7 +68,11 @@ async function writeSnapshot(snapshot, event) {
       if (current?.snapshot) checkpoints.put({ id: "previous", snapshot: current.snapshot, savedAt: new Date().toISOString() });
       checkpoints.put({ id: "current", snapshot: safe, savedAt: new Date().toISOString() });
     };
-    tx.objectStore("journal").add({ at: new Date().toISOString(), type: boundedText(event?.type || "update", 80), detail: boundedText(event?.detail || "", 500) });
+    const ecc = event?.ecc && typeof event.ecc === "object" ? {
+      version: boundedText(event.ecc.version || "", 80),
+      ids: Array.isArray(event.ecc.ids) ? event.ecc.ids.slice(0, 4).map((id) => boundedText(id, 80)) : []
+    } : null;
+    tx.objectStore("journal").add({ at: new Date().toISOString(), type: boundedText(event?.type || "update", 80), detail: boundedText(event?.detail || "", 500), ...(ecc ? { ecc } : {}) });
   });
   return safe;
 }
@@ -81,8 +86,9 @@ async function trimCache() {
 
 async function prepare({ prompt, mode, model }) {
   const safePrompt = boundedText(prompt, 8_000);
+  const ecc = selectEccPolicy({ prompt: safePrompt, mode });
   const snapshot = await currentSnapshot();
-  const key = exactCacheKey({ prompt: safePrompt, mode, model, memoryRevision: snapshot.memoryRevision });
+  const key = exactCacheKey({ prompt: safePrompt, mode, model, memoryRevision: snapshot.memoryRevision, eccFingerprint: ecc.fingerprint });
   const requests = await transaction(["responseCache"], "readonly", (tx) => [
     requestValue(tx.objectStore("responseCache").get(key)),
     requestValue(tx.objectStore("responseCache").getAll())
@@ -91,15 +97,16 @@ async function prepare({ prompt, mode, model }) {
   if (exact && !isFreshRequest(safePrompt)) {
     exact.lastUsedAt = new Date().toISOString();
     await transaction(["responseCache"], "readwrite", (tx) => tx.objectStore("responseCache").put(exact));
-    return { prompt: safePrompt, exact: { answer: boundedText(exact.answer), key }, relatedContext: "", snapshot };
+    return { prompt: safePrompt, exact: { answer: boundedText(exact.answer), key }, relatedContext: "", snapshot, ecc };
   }
-  return { prompt: safePrompt, exact: null, relatedContext: buildRelatedContext(safePrompt, entries), snapshot };
+  return { prompt: safePrompt, exact: null, relatedContext: buildRelatedContext(safePrompt, entries), snapshot, ecc };
 }
 
-async function recordExchange({ user, answer, mode, model, task }) {
+async function recordExchange({ user, answer, mode, model, task, ecc }) {
   const snapshot = await currentSnapshot();
   const safeUser = boundedText(user, 8_000);
   const safeAnswer = boundedText(answer, 8_000);
+  const selectedEcc = ecc?.fingerprint ? ecc : selectEccPolicy({ prompt: safeUser, mode });
   const next = {
     ...snapshot,
     memoryRevision: snapshot.memoryRevision + 1,
@@ -107,15 +114,16 @@ async function recordExchange({ user, answer, mode, model, task }) {
     messages: [...snapshot.messages, { role: "user", content: safeUser }, { role: "assistant", content: safeAnswer }].slice(-48),
     task: sanitizeTask(task || snapshot.task)
   };
-  const saved = await writeSnapshot(next, { type: "exchange", detail: safeUser });
+  const saved = await writeSnapshot(next, { type: "exchange", detail: safeUser, ecc: selectedEcc });
   if (!isFreshRequest(safeUser)) {
     const entry = {
-      key: exactCacheKey({ prompt: safeUser, mode, model, memoryRevision: saved.memoryRevision }),
+      key: exactCacheKey({ prompt: safeUser, mode, model, memoryRevision: saved.memoryRevision, eccFingerprint: selectedEcc.fingerprint }),
       prompt: safeUser,
       answer: safeAnswer,
       mode: boundedText(mode || "ask", 40),
       model: boundedText(model || "OpenTyphoon", 120),
       memoryRevision: saved.memoryRevision,
+      ecc: { version: selectedEcc.version, ids: selectedEcc.ids },
       tokens: tokenize(safeUser),
       createdAt: new Date().toISOString(),
       lastUsedAt: new Date().toISOString()
@@ -136,6 +144,7 @@ async function dispatch(type, payload) {
   if (type === "init") return { snapshot: await currentSnapshot() };
   if (type === "sanitize") return { text: boundedText(payload?.text, payload?.limit || 8_000) };
   if (type === "prepare") return prepare(payload || {});
+  if (type === "selectEcc") return { ecc: selectEccPolicy(payload || {}) };
   if (type === "recordExchange") return recordExchange(payload || {});
   if (type === "saveTask") return saveTask(payload || {});
   throw new Error("คำสั่ง Browser memory ไม่รองรับ");

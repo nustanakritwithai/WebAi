@@ -61,8 +61,8 @@ function fnv1a(value) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-export function exactCacheKey({ prompt, mode = "ask", model = "OpenTyphoon", memoryRevision = 0 }) {
-  const canonical = JSON.stringify({ prompt: boundedText(prompt, 8_000), mode, model, memoryRevision });
+export function exactCacheKey({ prompt, mode = "ask", model = "OpenTyphoon", memoryRevision = 0, eccFingerprint = "" }) {
+  const canonical = JSON.stringify({ prompt: boundedText(prompt, 8_000), mode, model, memoryRevision, eccFingerprint: boundedText(eccFingerprint, 180) });
   return `v${MEMORY_VERSION}-${fnv1a(canonical)}`;
 }
 
