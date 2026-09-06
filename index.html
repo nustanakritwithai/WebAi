@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#07101f">
   <meta name="description" content="WebAi — AI Software Engineering Workspace">
   <title>WebAi · AI Software Engineering Workspace</title>
-  <link rel="stylesheet" href="./styles.css">
-  <link rel="stylesheet" href="./semantic.css">
+  <link rel="stylesheet" href="./styles.css?v=dev" data-cache-bust="asset">
+  <link rel="stylesheet" href="./semantic.css?v=dev" data-cache-bust="asset">
 </head>
 <body>
   <header class="topbar">
@@ -174,8 +174,9 @@
                 <p id="agentActionHint">Agent จะหยุดรอให้คุณตรวจแผนก่อน execution</p>
               </div>
               <div class="agentActionButtons">
-                <button id="approveExecutionBtn" class="primary" type="button" disabled>Approve &amp; Execute <span>→</span></button>
-                <button id="verifyTaskBtn" class="verifyBtn" type="button" disabled>Run Verification <span>✓</span></button>
+                <button id="approveExecutionBtn" class="primary" type="button" disabled>Approve &amp; Generate <span>→</span></button>
+                <button id="applyAgentFilesBtn" class="workspaceAction primary" type="button" disabled>Apply to Workspace <span>↓</span></button>
+                <button id="verifyTaskBtn" class="verifyBtn" type="button" disabled>Verify <span>✓</span></button>
               </div>
             </div>
             <div id="agentError" class="agentError" role="alert" aria-live="polite" hidden></div>
@@ -210,11 +211,12 @@
 
             <section id="tab-preview" class="tabPanel">
               <div class="previewToolbar">
-                <div><span class="previewDot"></span><b>Live Preview</b><small id="previewStatus">ยังไม่เชื่อม dev server</small></div>
+                <div><span class="previewDot"></span><b>Sandbox Preview</b><small id="previewStatus">อ่านจาก IndexedDB เมื่อกด Run Preview</small></div>
+                <button id="runWorkspacePreview" class="workspaceAction primary" type="button">Run Preview <span>▶</span></button>
                 <div class="deviceSwitch"><button class="active" type="button">Desktop</button><button type="button">Tablet</button><button type="button">Mobile</button></div>
               </div>
-              <div class="previewCanvas">
-                <div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>เมื่อ OMP เปิด dev server หน้าเว็บจะปรากฏที่นี่</small></div>
+              <div class="previewCanvas" id="previewCanvas">
+                <div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>กด Apply to Workspace แล้ว Run Preview เพื่อรัน index.html, style.css และ app.js ใน sandbox</small></div>
               </div>
             </section>
 
@@ -362,7 +364,7 @@
     <button id="mobileMoreBtn" type="button"><span>•••</span><b>More</b></button>
   </nav>
 
-  <script src="./app.js" defer></script>
-  <script src="./workspace.js" defer></script>
+  <script src="./app.js?v=dev" defer></script>
+  <script src="./workspace.js?v=dev" defer></script>
 </body>
 </html>

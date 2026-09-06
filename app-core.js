@@ -55,6 +55,7 @@ const els = {
   activeMode: $("#activeMode"),
   elapsedTime: $("#elapsedTime"),
   approveExecution: $("#approveExecutionBtn"),
+  applyAgentFiles: $("#applyAgentFilesBtn"),
   verifyTask: $("#verifyTaskBtn"),
   agentActionHint: $("#agentActionHint"),
   agentError: $("#agentError"),
@@ -68,6 +69,9 @@ const els = {
   log: $("#eventLog"),
   gateBadge: $("#gateBadge"),
   gateMessage: $("#gateMessage"),
+  previewStatus: $("#previewStatus"),
+  previewCanvas: $("#previewCanvas"),
+  runWorkspacePreview: $("#runWorkspacePreview"),
   commandBtn: $("#commandBtn"),
   palette: $("#commandPalette"),
   commandInput: $("#commandInput"),
@@ -91,6 +95,7 @@ const state = {
 };
 
 const browserMemory = window.WebAiMemory;
+let workspacePreviewState = null;
 
 els.apiBase.value = state.apiBase;
 els.taskCount.textContent = state.completedTasks;
@@ -307,6 +312,10 @@ function agentStatusLabel(status) {
     planning: "กำลังวางแผน",
     awaiting_approval: "รอตรวจแผนและอนุมัติ",
     executing: "กำลัง execute",
+    awaiting_apply: "รอ Apply เข้า Browser Workspace",
+    applying: "กำลังเขียนไฟล์ใน IndexedDB",
+    awaiting_preview: "รอ Run Preview",
+    previewing: "กำลังรัน Sandbox Preview",
     awaiting_verification: "รอ Verification",
     verifying: "กำลัง verify",
     completed: "เสร็จสมบูรณ์หลัง verify",
@@ -325,14 +334,20 @@ function updateAgentActions() {
   const task = state.agentTask;
   const isAgentMode = els.mode.value === "agent";
   const canApprove = isAgentMode && !state.busy && task?.status === "awaiting_approval";
-  const canVerify = isAgentMode && !state.busy && task?.status === "awaiting_verification";
+  const canApply = isAgentMode && !state.busy && task?.status === "awaiting_apply";
+  const canVerify = isAgentMode && !state.busy && task?.status === "awaiting_verification" && workspacePreviewState?.loaded;
   if (els.approveExecution) els.approveExecution.disabled = !canApprove;
+  if (els.applyAgentFiles) els.applyAgentFiles.disabled = !canApply;
   if (els.verifyTask) els.verifyTask.disabled = !canVerify;
+  if (els.runWorkspacePreview) els.runWorkspacePreview.disabled = !!state.busy;
   if (!els.agentActionHint) return;
   if (!task && isAgentMode) els.agentActionHint.textContent = "Agent ใช้ OpenTyphoon ผ่าน Host A และเก็บงานไว้ในเครื่องนี้";
   else if (!task) els.agentActionHint.textContent = "Agent จะหยุดรอให้คุณตรวจแผนก่อนขอ demo code";
   else if (task.status === "awaiting_approval") els.agentActionHint.textContent = "ตรวจ Plan ด้านล่าง แล้วอนุมัติเมื่อพร้อมให้ Agent สร้าง browser demo";
-  else if (task.status === "awaiting_verification") els.agentActionHint.textContent = "Demo code พร้อมแล้ว เปิด Preview จาก code cards แล้วกด Run Verification";
+  else if (task.status === "awaiting_apply") els.agentActionHint.textContent = "ตรวจ code cards แล้วกด Apply to Workspace เพื่อเขียน index.html, style.css และ app.js ลง IndexedDB";
+  else if (task.status === "awaiting_preview") els.agentActionHint.textContent = "ไฟล์อยู่ใน Browser Workspace แล้ว — เปิด Preview และกด Run Preview ก่อน Verify";
+  else if (task.status === "awaiting_verification" && !workspacePreviewState?.loaded) els.agentActionHint.textContent = "ต้อง Run Preview อีกครั้งในหน้านี้เพื่อสร้าง iframe load evidence ก่อน Verify";
+  else if (task.status === "awaiting_verification") els.agentActionHint.textContent = "Sandbox Preview โหลดแล้ว — ตรวจผล แล้วกด Verify เพื่อปิดงาน";
   else if (task.status === "completed") els.agentActionHint.textContent = "ผ่าน Sandbox-preview verification แล้ว งานนี้จึงถือว่า DONE";
   else if (task.status === "verification_failed") els.agentActionHint.textContent = "Sandbox-preview verification ไม่ผ่าน — ตรวจ code cards แล้วลองใหม่";
   else els.agentActionHint.textContent = `สถานะปัจจุบัน: ${agentStatusLabel(task.status)}`;
@@ -541,7 +556,7 @@ function applyAgentTask(task) {
   els.taskStatus.textContent = agentStatusLabel(task.status);
   els.taskStatus.className = task.status === "completed" ? "pill ok" : ["failed", "verification_failed"].includes(task.status) ? "pill bad" : "pill info";
 
-  const progressByStatus = { planning: 1, awaiting_approval: 1, executing: 2, awaiting_verification: 3, verifying: 3, completed: 4, verification_failed: 3, failed: 1 };
+  const progressByStatus = { planning: 1, awaiting_approval: 1, executing: 2, awaiting_apply: 2, applying: 2, awaiting_preview: 3, previewing: 3, awaiting_verification: 3, verifying: 3, completed: 4, verification_failed: 3, failed: 1 };
   setProgress(Math.min(progressByStatus[task.status] ?? 1, 4), ["failed", "verification_failed"].includes(task.status));
   if (task.plan) showPlan(task.plan);
   if (task.demo) showPlan(task.demo);
@@ -559,6 +574,14 @@ function applyAgentTask(task) {
     els.gateBadge.textContent = "FAILED";
     els.gateBadge.className = "gateBadge fail";
     els.gateMessage.textContent = task.verification?.error || "Verification ไม่ผ่าน — งานยังไม่ถือว่า DONE";
+  } else if (task.status === "awaiting_apply") {
+    els.gateBadge.textContent = "READY TO APPLY";
+    els.gateBadge.className = "gateBadge waiting";
+    els.gateMessage.textContent = "Code พร้อมแล้ว แต่ยังไม่ถูกเขียนลง Browser Workspace จนกว่าจะกด Apply";
+  } else if (task.status === "awaiting_preview") {
+    els.gateBadge.textContent = "READY TO RUN";
+    els.gateBadge.className = "gateBadge waiting";
+    els.gateMessage.textContent = "Apply สำเร็จแล้ว — ต้องกด Run Preview เพื่อสร้างหลักฐานจาก iframe จริง";
   } else if (task.status === "awaiting_verification") {
     els.gateBadge.textContent = "READY TO VERIFY";
     els.gateBadge.className = "gateBadge waiting";
@@ -659,6 +682,66 @@ async function requestBrowserAgentChat(messages, memoryMode) {
   }
   return { ...data, choices: [{ message: { content: safeAnswer } }] };
 }
+const AGENT_FILE_LIMIT = 100_000;
+const AGENT_TOTAL_FILE_LIMIT = 240_000;
+const UNSAFE_PREVIEW_PATTERNS = [
+  [/(?:https?:|wss?:|ftp:)[^\s"'<>]*/i, "external URLs are not allowed"],
+  [/(?:data:|blob:|javascript:)/i, "external or executable URL schemes are not allowed"],
+  [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/i, "network APIs are not allowed"],
+  [/\bnavigator\.sendBeacon\s*\(/i, "beacon requests are not allowed"],
+  [/(?:window\.)?open\s*\(/i, "popups are not allowed"],
+  [/<\s*(?:form|iframe|object|embed|base)\b/i, "forms, frames, and navigation elements are not allowed"],
+  [/<\s*meta\b[^>]*http-equiv\s*=\s*["']?refresh/i, "document navigation is not allowed"],
+  [/(?:^|[\s;(])(?:location(?:\.(?:assign|replace|href))?|history\.pushState)\s*[=(]/i, "navigation APIs are not allowed"],
+  [/<\s*a\b[^>]*\bhref\s*=/i, "navigation links are not allowed"],
+  [/(?:\b(?:href|src|action|formaction)\s*=\s*["']\s*(?:https?:|\/\/|data:|blob:|javascript:))/i, "external resource references are not allowed"],
+  [/(?:\bdownload\s*=|\btarget\s*=\s*["']_blank["'])/i, "downloads and new windows are not allowed"],
+  [/\burl\s*\(/i, "CSS resource URLs are not allowed"]
+];
+
+function utf8Bytes(value) { return new TextEncoder().encode(value).byteLength; }
+
+function validatePreviewCode(code, language) {
+  if (typeof code !== "string" || !code.trim()) throw new Error(`${language || "Preview"} code is empty.`);
+  if (utf8Bytes(code) > AGENT_FILE_LIMIT) throw new Error(`${language} code is larger than ${AGENT_FILE_LIMIT.toLocaleString()} bytes.`);
+  for (const [pattern, reason] of UNSAFE_PREVIEW_PATTERNS) {
+    if (pattern.test(code)) throw new Error(`Preview blocked: ${reason}.`);
+  }
+  if (language === "html" && /<\s*script\b/i.test(code)) throw new Error("Preview blocked: put JavaScript in app.js, not inside index.html.");
+  return code;
+}
+
+function browserDemoFiles(text) {
+  const blocks = browserDemoBlocks(text);
+  const files = { html: null, css: null, javascript: null };
+  for (const block of blocks) {
+    if (files[block.language]) throw new Error(`Demo response has duplicate ${block.language} blocks.`);
+    validatePreviewCode(block.code, block.language);
+    files[block.language] = block.code;
+  }
+  if (Object.values(files).some((value) => value == null)) throw new Error("Demo response ต้องมี code fences ครบทั้ง html, css และ javascript");
+  const totalBytes = Object.values(files).reduce((total, value) => total + utf8Bytes(value), 0);
+  if (totalBytes > AGENT_TOTAL_FILE_LIMIT) throw new Error(`Demo output is larger than ${AGENT_TOTAL_FILE_LIMIT.toLocaleString()} bytes.`);
+  return [
+    { path: "index.html", content: files.html },
+    { path: "style.css", content: files.css },
+    { path: "app.js", content: files.javascript }
+  ];
+}
+
+async function getBrowserWorkspace() {
+  const getApi = () => window.WebAiBrowserWorkspace;
+  if (!getApi()) {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Browser Workspace is unavailable.")), 4000);
+      window.addEventListener("webai:workspace-ready", () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+  }
+  const workspace = getApi();
+  if (!workspace) throw new Error("Browser Workspace is unavailable.");
+  await workspace.ready;
+  return workspace;
+}
 
 async function createBrowserAgentTask(goal) {
   const task = {
@@ -715,19 +798,15 @@ async function approveAgentExecution() {
       { role: "user", content: `Approved goal:\n${task.goal}\n\nApproved plan:\n${task.plan}` }
     ], "browser-demo");
     const demo = typhoonAnswer(data);
-    const blocks = browserDemoBlocks(demo);
-    const languages = new Set(blocks.map((block) => block.language));
-    if (!["html", "css", "javascript"].every((language) => languages.has(language))) {
-      throw new Error("Demo response ต้องมี code fences ครบทั้ง html, css และ javascript");
-    }
+    browserDemoFiles(demo);
     task.demo = demo;
-    task.status = "awaiting_verification";
-    addBrowserAgentEvent("demo_ready", "Runnable code cards ready for sandbox preview");
+    task.status = "awaiting_apply";
+    addBrowserAgentEvent("demo_ready", "Runnable code cards ready; explicit Apply is required before IndexedDB write");
     applyAgentTask(task);
     showPlan(demo);
-    addTimeline("Browser demo ready", "แสดงผ่าน sandbox preview code cards แล้ว", "ok");
+    addTimeline("Browser demo ready", "ตรวจ code แล้ว · กด Apply to Workspace เพื่อเขียนลง IndexedDB", "ok");
     log(`Browser demo ready · ${task.id}`, "ok");
-    els.currentTaskDetail.textContent = "Demo code พร้อมแล้ว — เปิด Preview บน code cards แล้วกด Run Verification";
+    els.currentTaskDetail.textContent = "Demo code พร้อมแล้ว — ตรวจ code แล้วกด Apply to Workspace";
   } catch (error) {
     setAgentError(agentErrorMessage(error, "อนุมัติ execution ไม่สำเร็จ"));
     task.status = "failed";
@@ -737,6 +816,47 @@ async function approveAgentExecution() {
     els.currentTaskDetail.textContent = error.message;
     els.taskStatus.textContent = "Agent error";
     els.taskStatus.className = "pill bad";
+  } finally {
+    state.busy = false;
+    applyActionState();
+  }
+}
+
+async function applyAgentFiles() {
+  const task = state.agentTask;
+  if (!task?.id || task.status !== "awaiting_apply" || state.busy) return;
+  setAgentError("");
+  state.busy = true;
+  task.status = "applying";
+  saveBrowserAgentTask();
+  els.taskStatus.textContent = "กำลังเขียนไฟล์ใน IndexedDB";
+  els.taskStatus.className = "pill info";
+  addBrowserAgentEvent("apply_started", "Explicit Apply requested for browser workspace");
+  addTimeline("Apply started", "เขียน index.html, style.css และ app.js ลง IndexedDB", "working");
+  log(`Apply browser files to IndexedDB · ${task.id}`);
+  applyAgentTask(task);
+  try {
+    const files = browserDemoFiles(task.demo || "");
+    const workspace = await getBrowserWorkspace();
+    const revisions = await workspace.writeFiles(files, { source: "browser-agent", taskId: task.id });
+    task.appliedFiles = revisions;
+    task.status = "awaiting_preview";
+    task.preview = null;
+    task.verification = null;
+    addBrowserAgentEvent("files_applied", "Three approved demo files saved as revisioned IndexedDB records");
+    applyAgentTask(task);
+    addTimeline("Files applied", "IndexedDB revision created for index.html, style.css and app.js", "ok");
+    log(`Browser files applied · ${task.id}`, "ok");
+    els.currentTaskDetail.textContent = "ไฟล์ถูก Apply แล้ว — เปิด Preview และกด Run Preview";
+    selectTab("preview");
+  } catch (error) {
+    task.status = "failed";
+    task.error = error.message;
+    setAgentError(agentErrorMessage(error, "Apply เข้า Browser Workspace ไม่สำเร็จ"));
+    addBrowserAgentEvent("apply_failed", error.message);
+    addTimeline("Apply failed", error.message, "bad");
+    log(`Browser file apply failed · ${error.message}`, "bad");
+    applyAgentTask(task);
   } finally {
     state.busy = false;
     applyActionState();
@@ -753,37 +873,45 @@ async function verifyAgentTask() {
   setProgress(3);
   els.gateBadge.textContent = "VERIFYING";
   els.gateBadge.className = "gateBadge waiting";
-  els.gateMessage.textContent = "กำลังตรวจ code cards และ preview document ใน browser เท่านั้น";
+  els.gateMessage.textContent = "กำลังตรวจไฟล์ใน IndexedDB, sandbox iframe load และ runtime evidence";
   task.status = "verifying";
   saveBrowserAgentTask();
   addBrowserAgentEvent("verification_started", "Local sandbox-preview verification started");
-  addTimeline("Sandbox-preview verification started", "ตรวจเฉพาะ code cards และ sandbox document ในเครื่องนี้", "working");
+  addTimeline("Sandbox-preview verification started", "ตรวจเฉพาะ browser workspace และ iframe ในเครื่องนี้", "working");
   log(`Run local sandbox-preview verification · ${task.id}`);
   applyActionState();
   try {
+    const expectedFiles = browserDemoFiles(task.demo || "");
+    const workspace = await getBrowserWorkspace();
+    const records = await workspace.readFiles(expectedFiles.map((file) => file.path));
     const blocks = browserDemoBlocks(task.demo || "");
     const languages = new Set(blocks.map((block) => block.language));
     const cards = $$("#planBox .codeCard");
-    const previewable = blocks.filter((block) => PREVIEW_LANGUAGES.has(block.language));
-    const documents = previewable.map((block) => previewDocument(block.code, block.language));
+    const frame = els.previewCanvas?.querySelector("iframe");
+    const workspaceFiles = expectedFiles.every((file) => records[file.path]?.content === file.content);
+    const previewLoaded = Boolean(workspacePreviewState?.loaded && frame?.getAttribute("sandbox") === "allow-scripts");
+    const runtimeClean = previewLoaded && workspacePreviewState.runtimeErrors.length === 0;
     const checks = {
       html_code_card: languages.has("html") && cards.some((card) => card.querySelector(".codeCardLanguage")?.textContent === "html"),
       css_code_card: languages.has("css") && cards.some((card) => card.querySelector(".codeCardLanguage")?.textContent === "css"),
       javascript_code_card: languages.has("javascript") && cards.some((card) => card.querySelector(".codeCardLanguage")?.textContent === "javascript"),
-      sandbox_documents: documents.length === 3 && documents.every((document) => document.includes("Content-Security-Policy"))
+      workspace_files: workspaceFiles,
+      iframe_loaded: previewLoaded,
+      runtime_clean: runtimeClean,
+      sandbox_document: Boolean(frame?.srcdoc?.includes("Content-Security-Policy") && !String(frame?.getAttribute("sandbox") || "").includes("allow-same-origin"))
     };
     const ok = Object.values(checks).every(Boolean);
-    task.verification = { ok, label: "Sandbox-preview verification", local: true, checks, note: "No server/workspace tests were run; no repository was edited." };
+    task.verification = { ok, label: "Sandbox-preview verification", local: true, checks, iframe: { loaded: Boolean(workspacePreviewState?.loaded), runtimeErrors: workspacePreviewState?.runtimeErrors || [], versions: workspacePreviewState?.versions || {} }, note: "No server/workspace tests were run; no repository was edited." };
     task.status = ok ? "completed" : "verification_failed";
     addBrowserAgentEvent(ok ? "verification_passed" : "verification_failed", task.verification.note);
     applyAgentTask(task);
     if (ok) {
       incrementCompletedTask();
       stopTimer();
-      addTimeline("Sandbox-preview verification passed", "ตรวจ local preview assets ครบ · ไม่ใช่ server/workspace test", "ok");
+      addTimeline("Sandbox-preview verification passed", "iframe load confirmed · runtime clean · no server/workspace test", "ok");
       log(`Sandbox-preview verification passed · ${task.id}`, "ok");
     } else {
-      addTimeline("Sandbox-preview verification failed", "code cards หรือ preview document ไม่ครบ", "bad");
+      addTimeline("Sandbox-preview verification failed", "workspace files, iframe load, or runtime evidence did not pass", "bad");
       log(`Sandbox-preview verification failed · ${task.id}`, "bad");
     }
   } catch (error) {
@@ -844,10 +972,11 @@ async function copyCode(button, code) {
 }
 
 function escapePreviewMarkup(value, tagName) {
-  return value.replace(new RegExp(`<\\/${tagName}`, "gi"), `<\\/${tagName}`);
+  return value.replace(new RegExp(`<\\/${tagName}`, "gi"), `<\\\\/${tagName}`);
 }
 
 function previewDocument(code, language) {
+  validatePreviewCode(code, language);
   const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; font-src data:; media-src data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; navigate-to 'none';";
   const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
   if (language === "html") {
@@ -857,6 +986,99 @@ function previewDocument(code, language) {
     return `<!doctype html><html><head>${meta}<style>${escapePreviewMarkup(code, "style")}</style></head><body><main class="preview-sample"><h1>CSS Preview</h1><p>Your CSS is running in a sandboxed preview.</p><button type="button">Sample button</button></main></body></html>`;
   }
   return `<!doctype html><html><head>${meta}<style>body{font:16px system-ui,sans-serif;margin:24px;color:#172033;background:#f4f7fb}#preview-root{white-space:pre-wrap}</style></head><body><main id="preview-root"></main><script>${escapePreviewMarkup(code, "script")}</script></body></html>`;
+}
+
+function previewToken() {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  return `preview-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function composeWorkspaceDocument(files, token) {
+  const index = validatePreviewCode(files["index.html"], "html")
+    .replace(/<\s*link\b[^>]*\bhref\s*=\s*["'][^"']*style\.css[^"']*["'][^>]*>/gi, "");
+  if (/<\s*link\b/i.test(index)) throw new Error("Preview blocked: external stylesheet links are not allowed.");
+  const css = validatePreviewCode(files["style.css"], "css");
+  const app = validatePreviewCode(files["app.js"], "javascript");
+  const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; font-src data:; media-src data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; navigate-to 'none'; popup: 'none'; download: 'none';";
+  const meta = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}">`;
+  const runtime = `<script>window.__webaiPreviewErrors=[];window.addEventListener('error',function(e){window.__webaiPreviewErrors.push(String(e.message||'runtime error'));window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:String(e.message||'runtime error')},'*');});window.addEventListener('unhandledrejection',function(e){var message=String(e.reason?.message||e.reason||'unhandled rejection');window.__webaiPreviewErrors.push(message);window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:message},'*');});window.addEventListener('load',function(){window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'ready'},'*');});</script>`;
+  const style = `<style>${escapePreviewMarkup(css, "style")}</style>`;
+  const script = `<script>${escapePreviewMarkup(app, "script")}</script>`;
+  if (/<\s*html\b/i.test(index)) {
+    let documentMarkup = index;
+    if (/<\/head>/i.test(documentMarkup)) documentMarkup = documentMarkup.replace(/<\/head>/i, `${meta}${style}</head>`);
+    else documentMarkup = documentMarkup.replace(/<\s*html\b[^>]*>/i, (match) => `${match}<head>${meta}${style}</head>`);
+    if (/<\/body>/i.test(documentMarkup)) return documentMarkup.replace(/<\/body>/i, `${runtime}${script}</body>`);
+    return `${documentMarkup}${runtime}${script}`;
+  }
+  return `<!doctype html><html><head>${meta}${style}</head><body>${index}${runtime}${script}</body></html>`;
+}
+
+async function runWorkspacePreview() {
+  if (state.busy) return;
+  setAgentError("");
+  if (els.previewStatus) els.previewStatus.textContent = "Reading revisioned IndexedDB files…";
+  const workspace = await getBrowserWorkspace().catch((error) => {
+    if (els.previewStatus) els.previewStatus.textContent = error.message;
+    setAgentError(agentErrorMessage(error, "เปิด Browser Workspace ไม่สำเร็จ"));
+    return null;
+  });
+  if (!workspace) return;
+  let onMessage = null;
+  try {
+    const records = await workspace.readFiles(["index.html", "style.css", "app.js"]);
+    const files = Object.fromEntries(Object.entries(records).map(([path, record]) => [path, record.content]));
+    const token = previewToken();
+    const iframe = document.createElement("iframe");
+    iframe.className = "workspacePreviewFrame";
+    iframe.setAttribute("sandbox", "allow-scripts");
+    iframe.setAttribute("referrerpolicy", "no-referrer");
+    iframe.setAttribute("title", "Browser Workspace sandbox preview");
+    const runtimeErrors = [];
+    onMessage = (event) => {
+      if (event.source !== iframe.contentWindow || event.data?.type !== "webai-preview-runtime" || event.data.token !== token) return;
+      if (event.data.kind === "error" && event.data.message) runtimeErrors.push(event.data.message);
+    };
+    const loaded = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Sandbox Preview did not load within 8 seconds.")), 8000);
+      iframe.addEventListener("load", () => { clearTimeout(timer); resolve(); }, { once: true });
+      iframe.addEventListener("error", () => { clearTimeout(timer); reject(new Error("Sandbox Preview failed to load.")); }, { once: true });
+    });
+    window.addEventListener("message", onMessage);
+    iframe.srcdoc = composeWorkspaceDocument(files, token);
+    els.previewCanvas.replaceChildren(iframe);
+    if (els.previewStatus) els.previewStatus.textContent = "Loading local files in sandbox…";
+    await loaded;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    window.removeEventListener("message", onMessage);
+    workspacePreviewState = { loaded: true, runtimeErrors: runtimeErrors.slice(), token, versions: Object.fromEntries(Object.entries(records).map(([path, record]) => [path, record.version])), at: new Date().toISOString() };
+    if (els.previewStatus) els.previewStatus.textContent = runtimeErrors.length ? `Loaded with ${runtimeErrors.length} runtime error${runtimeErrors.length === 1 ? "" : "s"}` : "Loaded · IndexedDB files · network blocked";
+    if (state.agentTask?.appliedFiles) {
+      state.agentTask.preview = { ...workspacePreviewState, ok: runtimeErrors.length === 0 };
+      if (state.agentTask.status === "awaiting_preview" || state.agentTask.status === "completed") state.agentTask.status = "awaiting_verification";
+      state.agentTask.verification = null;
+      addBrowserAgentEvent("preview_loaded", runtimeErrors.length ? `${runtimeErrors.length} runtime error(s)` : "Sandbox iframe load and runtime evidence received");
+      applyAgentTask(state.agentTask);
+      selectTab("preview");
+      saveBrowserAgentTask();
+      addTimeline("Sandbox Preview loaded", runtimeErrors.length ? `${runtimeErrors.length} runtime error(s) detected` : "iframe load confirmed · no runtime errors", runtimeErrors.length ? "bad" : "ok");
+    }
+    updateAgentActions();
+  } catch (error) {
+    if (onMessage) window.removeEventListener("message", onMessage);
+    workspacePreviewState = { loaded: false, runtimeErrors: [error.message], at: new Date().toISOString() };
+    if (els.previewStatus) els.previewStatus.textContent = error.message;
+    setAgentError(agentErrorMessage(error, "Run Preview ไม่สำเร็จ"));
+    if (state.agentTask?.appliedFiles) {
+      state.agentTask.status = "failed";
+      state.agentTask.error = error.message;
+      addBrowserAgentEvent("preview_failed", error.message);
+      applyAgentTask(state.agentTask);
+    }
+    addTimeline("Sandbox Preview failed", error.message, "bad");
+  } finally {
+    updateAgentActions();
+  }
 }
 
 function openCodePreview(host, button, code, language) {
@@ -1047,7 +1269,31 @@ async function runTask() {
     finishTask(e.message, false);
   }
 }
-function resetTask() { stopTimer(); const previousTask = state.taskId; state.taskId = null; state.taskStart = null; state.agentTask = null; localStorage.removeItem(BROWSER_AGENT_STORAGE_KEY); if (previousTask && browserMemory?.supported?.()) browserMemory.saveTask(null).catch(() => {}); setAgentError(""); els.currentTaskId.textContent = "NO TASK"; els.currentTaskGoal.textContent = "ยังไม่มีงานที่กำลังทำ"; els.currentTaskDetail.textContent = "พิมพ์เป้าหมายด้านบนแล้วกด Run Task"; els.activeAgent.textContent = "Idle"; els.activeModel.textContent = "—"; els.activeMode.textContent = "—"; els.elapsedTime.textContent = "—"; $$("#progressSteps .progressStep").forEach((s) => s.classList.remove("done", "active", "failed")); els.gateBadge.textContent = "WAITING"; els.gateBadge.className = "gateBadge waiting"; els.gateMessage.textContent = "เริ่ม Verification หลังมี Task run จริง"; updateAgentActions(); }
+function resetTask() {
+  stopTimer();
+  const previousTask = state.taskId;
+  state.taskId = null;
+  state.taskStart = null;
+  state.agentTask = null;
+  workspacePreviewState = null;
+  localStorage.removeItem(BROWSER_AGENT_STORAGE_KEY);
+  if (previousTask && browserMemory?.supported?.()) browserMemory.saveTask(null).catch(() => {});
+  setAgentError("");
+  els.currentTaskId.textContent = "NO TASK";
+  els.currentTaskGoal.textContent = "ยังไม่มีงานที่กำลังทำ";
+  els.currentTaskDetail.textContent = "พิมพ์เป้าหมายด้านบนแล้วกด Run Task";
+  els.activeAgent.textContent = "Idle";
+  els.activeModel.textContent = "—";
+  els.activeMode.textContent = "—";
+  els.elapsedTime.textContent = "—";
+  $$("#progressSteps .progressStep").forEach((s) => s.classList.remove("done", "active", "failed"));
+  els.gateBadge.textContent = "WAITING";
+  els.gateBadge.className = "gateBadge waiting";
+  els.gateMessage.textContent = "เริ่ม Verification หลังมี Task run จริง";
+  if (els.previewCanvas) els.previewCanvas.innerHTML = '<div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>กด Apply to Workspace แล้ว Run Preview เพื่อรันไฟล์ใน sandbox</small></div>';
+  if (els.previewStatus) els.previewStatus.textContent = "อ่านจาก IndexedDB เมื่อกด Run Preview";
+  updateAgentActions();
+}
 
 els.save.addEventListener("click", () => { state.apiBase = els.apiBase.value.trim(); localStorage.setItem("webai.apiBase", state.apiBase); if (!normalizedBase()) { setConnectionWaiting(); return; } if (!/^https?:\/\//i.test(normalizedBase())) { setConnectionFailed("URL ต้องขึ้นต้นด้วย https:// หรือ http://"); return; } log("Save Backend URL · start health check"); health(); });
 els.systemButton.addEventListener("click", openDrawer); els.settingsBtn.addEventListener("click", openDrawer); els.openConnection.addEventListener("click", openDrawer); els.mobileMoreBtn.addEventListener("click", openDrawer); els.closeDrawer.addEventListener("click", closeDrawer); els.drawer.addEventListener("click", (e) => { if (e.target === els.drawer) closeDrawer(); });
@@ -1055,7 +1301,7 @@ els.commandBtn.addEventListener("click", openPalette); els.palette.addEventListe
 document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); } if (e.key === "Escape") { closeDrawer(); closePalette(); } if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !els.run.disabled) runTask(); });
 $$('[data-command]').forEach((btn) => btn.addEventListener("click", () => { const cmd = btn.dataset.command; closePalette(); if (cmd === "new-task") { document.querySelector("#home")?.scrollIntoView({ behavior: "smooth" }); setTimeout(() => els.input.focus(), 250); } if (cmd === "connect") openDrawer(); if (cmd === "workspace") document.querySelector("#workspace")?.scrollIntoView({ behavior: "smooth" }); if (cmd === "roadmap") location.href = "./roadmap.html"; }));
 $$('.promptChip').forEach((btn) => btn.addEventListener("click", () => { els.input.value = btn.dataset.prompt || ""; els.input.focus(); applyActionState(); }));
-els.input.addEventListener("input", applyActionState); els.mode.addEventListener("change", applyActionState); els.run.addEventListener("click", runTask); els.approveExecution.addEventListener("click", approveAgentExecution); els.verifyTask.addEventListener("click", verifyAgentTask); els.clearTask.addEventListener("click", resetTask); els.clearTimeline.addEventListener("click", () => { els.timeline.innerHTML = '<div class="emptyState compact"><span>◎</span><b>ยังไม่มีเหตุการณ์</b><small>Timeline จะอัปเดตเมื่อเริ่ม Task</small></div>'; }); els.clearLog.addEventListener("click", () => { els.log.innerHTML = '<div class="emptyLog">ยังไม่มี event · ระบบจะแสดง metadata โดยไม่ log secret</div>'; });
+  els.input.addEventListener("input", applyActionState); els.mode.addEventListener("change", applyActionState); els.run.addEventListener("click", runTask); els.approveExecution.addEventListener("click", approveAgentExecution); els.applyAgentFiles.addEventListener("click", applyAgentFiles); els.runWorkspacePreview.addEventListener("click", runWorkspacePreview); els.verifyTask.addEventListener("click", verifyAgentTask); els.clearTask.addEventListener("click", resetTask); els.clearTimeline.addEventListener("click", () => { els.timeline.innerHTML = '<div class="emptyState compact"><span>◎</span><b>ยังไม่มีเหตุการณ์</b><small>Timeline จะอัปเดตเมื่อเริ่ม Task</small></div>'; }); els.clearLog.addEventListener("click", () => { els.log.innerHTML = '<div class="emptyLog">ยังไม่มี event · ระบบจะแสดง metadata โดยไม่ log secret</div>'; });
 $$('.tabBtn').forEach((btn) => btn.addEventListener("click", () => selectTab(btn.dataset.tab)));
 $$('.deviceSwitch button').forEach((btn) => btn.addEventListener("click", () => { $$('.deviceSwitch button').forEach((b) => b.classList.toggle("active", b === btn)); }));
 if (state.agentTask) {

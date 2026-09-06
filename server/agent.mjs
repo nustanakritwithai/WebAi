@@ -56,6 +56,11 @@ function normalizeSnapshotFiles(value) {
     existed: item?.existed === true,
     beforeSha256: typeof item?.beforeSha256 === "string" ? item.beforeSha256.slice(0, 64) : null,
     afterSha256: typeof item?.afterSha256 === "string" ? item.afterSha256.slice(0, 64) : null,
+    changed: item?.changed === true,
+    additions: Number.isInteger(item?.additions) && item.additions >= 0 ? Math.min(item.additions, 1_000_000) : null,
+    deletions: Number.isInteger(item?.deletions) && item.deletions >= 0 ? Math.min(item.deletions, 1_000_000) : null,
+    diffExact: item?.diffExact === true,
+    diffKind: typeof item?.diffKind === "string" ? boundedText(item.diffKind, 40) : null,
     ...(Number.isInteger(item?.bytesBefore) ? { bytesBefore: Math.max(0, item.bytesBefore) } : {}),
     ...(Number.isInteger(item?.bytesAfter) ? { bytesAfter: Math.max(0, item.bytesAfter) } : {}),
   })).filter((item) => item.path);

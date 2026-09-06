@@ -50,7 +50,7 @@ function readState() {
 }
 
 try {
-  // Case 1: post-state was durably recorded; restart should resume at verification.
+  // Case 1: post-state was durably recorded; restart should resume at verification with diff evidence intact.
   writeFileSync(join(workspace, "src", "applied.js"), "export const value = 'before';\n");
   const appliedExecution = "exec-applied-recovery";
   const appliedCapture = await store.createSnapshot({
@@ -68,6 +68,11 @@ try {
   let state = readState();
   assert.equal(state.tasks[0].status, "awaiting_verification");
   assert.equal(state.tasks[0].executions[0].status, "applied");
+  assert.equal(state.tasks[0].executions[0].files[0].changed, true);
+  assert.equal(state.tasks[0].executions[0].files[0].additions, 1);
+  assert.equal(state.tasks[0].executions[0].files[0].deletions, 1);
+  assert.equal(state.tasks[0].executions[0].files[0].diffExact, true);
+  assert.equal(state.tasks[0].executions[0].files[0].diffKind, "line-exact");
   assert.equal(readFileSync(join(workspace, "src", "applied.js"), "utf8"), "export const value = 'after';\n");
 
   // Case 2: snapshot existed but after-state was never committed; fail-safe restore before-state.
@@ -112,7 +117,7 @@ try {
   assert.deepEqual(state.tasks[0].rollback?.conflicts, ["src/drift.js"]);
   assert.equal(readFileSync(join(workspace, "src", "drift.js"), "utf8"), "export const value = 'external-drift';\n");
 
-  console.log("RECOVERY SMOKE PASS: applied resume, captured fail-safe restore, drift conflict without mutation");
+  console.log("RECOVERY SMOKE PASS: applied resume with diff evidence, captured fail-safe restore, drift conflict without mutation");
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

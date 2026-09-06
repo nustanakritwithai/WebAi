@@ -11,11 +11,13 @@
     "smoke": "node scripts/smoke.mjs",
     "core-smoke": "node scripts/core-smoke.mjs",
     "agent-smoke": "node scripts/agent-smoke.mjs",
+    "browser-agent-contract": "node scripts/browser-agent-contract.mjs",
     "native-worker-smoke": "node scripts/native-worker-smoke.mjs",
     "memory-smoke": "node scripts/browser-memory-smoke.mjs",
     "ecc-smoke": "node scripts/ecc-smoke.mjs",
+    "diff-evidence-smoke": "node scripts/diff-evidence-smoke.mjs",
     "snapshot-smoke": "node scripts/snapshot-smoke.mjs",
     "recovery-smoke": "node scripts/recovery-smoke.mjs",
-    "test": "node scripts/smoke.mjs && node scripts/browser-memory-smoke.mjs && node scripts/ecc-smoke.mjs && node scripts/agent-smoke.mjs && node scripts/native-worker-smoke.mjs && node scripts/snapshot-smoke.mjs && node scripts/recovery-smoke.mjs && node scripts/core-smoke.mjs"
+    "test": "node scripts/smoke.mjs && node scripts/browser-memory-smoke.mjs && node scripts/ecc-smoke.mjs && node scripts/agent-smoke.mjs && node scripts/browser-agent-contract.mjs && node scripts/native-worker-smoke.mjs && node scripts/diff-evidence-smoke.mjs && node scripts/snapshot-smoke.mjs && node scripts/recovery-smoke.mjs && node scripts/core-smoke.mjs"
   }
 }
