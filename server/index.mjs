@@ -1,4 +1,6 @@
 import http from "node:http";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { URL } from "node:url";
 
 const PORT = Number(process.env.PORT || "8787");
@@ -9,11 +11,17 @@ const MAX_MESSAGES = 40;
 const MAX_CONTENT_CHARS = 12_000;
 const REQUESTS_PER_MINUTE = 30;
 const UPSTREAM_TIMEOUT_MS = 60_000;
-const ALLOWED_ORIGIN = "https://nustanakritwithai.github.io";
+const OMP_TIMEOUT_MS = 180_000;
 const buckets = new Map();
 
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65_535) {
   throw new Error("PORT must be an integer between 1 and 65535");
+}
+
+function envBool(name, fallback = false) {
+  const value = process.env[name];
+  if (value == null || value === "") return fallback;
+  return /^(1|true|yes|on)$/i.test(value);
 }
 
 function configuredBaseUrl() {
@@ -33,9 +41,34 @@ function configuredBaseUrl() {
 const TYPHOON_BASE_URL = configuredBaseUrl();
 const TYPHOON_MODEL = process.env.TYPHOON_MODEL || DEFAULT_MODEL;
 const TYPHOON_API_KEY = process.env.TYPHOON_API_KEY || "";
+const WEB_AUTH_TOKEN = process.env.WEB_AUTH_TOKEN || "";
+const WEBAI_WORKSPACE = process.env.WEBAI_WORKSPACE || "";
+
+const OMP_ENABLED = envBool("OMP_ENABLED");
+const OMP_COMMAND = process.env.OMP_COMMAND || "omp";
+const OMP_PROVIDER = process.env.OMP_PROVIDER || "opentyphoon";
+const OMP_MODEL = process.env.OMP_MODEL || TYPHOON_MODEL;
+
+const ECC_ENABLED = envBool("ECC_ENABLED");
+const ECC_ROOT = process.env.ECC_ROOT || "";
+const HERMES_ENABLED = envBool("HERMES_ENABLED");
+const HERMES_HOME = process.env.HERMES_HOME || "";
+const OPENCLAW_ENABLED = envBool("OPENCLAW_ENABLED");
+const OPENCLAW_URL = process.env.OPENCLAW_URL || "";
+const HARPOON_ENABLED = envBool("HARPOON_ENABLED");
+const HARPOON_URL = process.env.HARPOON_URL || "";
+const PREVIEW_ENABLED = envBool("PREVIEW_ENABLED");
+const PREVIEW_BASE_URL = process.env.PREVIEW_BASE_URL || "";
+
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || "https://nustanakritwithai.github.io")
+  .split(",")
+  .map((value) => value.trim().replace(/\/$/, ""))
+  .filter(Boolean);
 
 function allowedOrigin(origin) {
-  if (origin === ALLOWED_ORIGIN) return true;
+  if (!origin) return true;
+  const normalized = origin.replace(/\/$/, "");
+  if (configuredOrigins.includes(normalized)) return true;
   try {
     const url = new URL(origin);
     return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
@@ -51,7 +84,7 @@ function corsHeaders(req) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "content-type",
+    "Access-Control-Allow-Headers": "content-type,x-webai-token",
     "Access-Control-Max-Age": "600",
     Vary: "Origin",
   };
@@ -65,6 +98,10 @@ function send(req, res, status, body, extraHeaders = {}) {
     ...extraHeaders,
   });
   res.end(JSON.stringify(body));
+}
+
+function authOk(req) {
+  return !WEB_AUTH_TOKEN || req.headers["x-webai-token"] === WEB_AUTH_TOKEN;
 }
 
 function clientIp(req) {
@@ -170,6 +207,120 @@ async function requestTyphoon(chat) {
   }
 }
 
+function capabilityRegistry() {
+  const workspaceConfigured = Boolean(WEBAI_WORKSPACE) && existsSync(WEBAI_WORKSPACE);
+  return {
+    typhoon: {
+      enabled: true,
+      configured: Boolean(TYPHOON_API_KEY),
+      model: TYPHOON_MODEL,
+    },
+    omp: {
+      enabled: OMP_ENABLED,
+      configured: OMP_ENABLED && workspaceConfigured && Boolean(OMP_COMMAND),
+      provider: OMP_PROVIDER,
+      model: OMP_MODEL,
+    },
+    ecc: {
+      enabled: ECC_ENABLED,
+      configured: ECC_ENABLED && Boolean(ECC_ROOT),
+    },
+    hermes: {
+      enabled: HERMES_ENABLED,
+      configured: HERMES_ENABLED && Boolean(HERMES_HOME),
+    },
+    openclaw: {
+      enabled: OPENCLAW_ENABLED,
+      configured: OPENCLAW_ENABLED && Boolean(OPENCLAW_URL),
+    },
+    harpoon: {
+      enabled: HARPOON_ENABLED,
+      configured: HARPOON_ENABLED && Boolean(HARPOON_URL),
+    },
+    preview: {
+      enabled: PREVIEW_ENABLED,
+      configured: PREVIEW_ENABLED && Boolean(PREVIEW_BASE_URL),
+    },
+  };
+}
+
+function runOmp(prompt) {
+  const capabilities = capabilityRegistry();
+  if (!capabilities.omp.enabled) {
+    throw Object.assign(new Error("omp_disabled"), { status: 503 });
+  }
+  if (!capabilities.omp.configured) {
+    throw Object.assign(new Error("omp_not_configured"), { status: 503 });
+  }
+  if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 16_000) {
+    throw Object.assign(new Error("invalid_prompt"), { status: 400 });
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(OMP_COMMAND, ["--mode", "rpc", "--no-session"], {
+      cwd: WEBAI_WORKSPACE,
+      env: process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let finalText = "";
+    let done = false;
+    let buffer = "";
+
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(Object.assign(new Error("omp_timeout"), { status: 504 }));
+    }, OMP_TIMEOUT_MS);
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderr = (stderr + chunk).slice(-20_000);
+    });
+    child.stdout.on("data", (chunk) => {
+      stdout = (stdout + chunk).slice(-50_000);
+      buffer += chunk;
+      let newline;
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line) continue;
+        try {
+          const event = JSON.parse(line);
+          if (event.type === "ready") {
+            child.stdin.write(JSON.stringify({ id: "m1", type: "set_model", provider: OMP_PROVIDER, modelId: OMP_MODEL }) + "\n");
+            child.stdin.write(JSON.stringify({ id: "p1", type: "prompt", message: prompt }) + "\n");
+          }
+          if (event.type === "message_update" && event?.assistantMessageEvent?.type === "text_delta") {
+            finalText += event.assistantMessageEvent.delta || "";
+          }
+          if (event.type === "agent_end") {
+            done = true;
+            child.stdin.end();
+          }
+        } catch {
+          // Ignore non-JSON stdout lines; never return raw environment values.
+        }
+      }
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(Object.assign(new Error(`omp_spawn_failed:${error.message}`), { status: 503 }));
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (done && code === 0) {
+        return resolve({ ok: true, worker: "omp", content: finalText, verification: null });
+      }
+      const safeDetail = (stderr || stdout).replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]").slice(-4000);
+      reject(Object.assign(new Error(`omp_exit_${code}:${safeDetail}`), { status: 502 }));
+    });
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin;
   if (origin && !allowedOrigin(origin)) {
@@ -179,31 +330,93 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, corsHeaders(req));
     return res.end();
   }
+
   const url = new URL(req.url || "/", "http://localhost");
+
   if (req.method === "GET" && url.pathname === "/api/health") {
-    return send(req, res, 200, { ok: true, provider: "opentyphoon", keyConfigured: Boolean(TYPHOON_API_KEY) });
+    const capabilities = capabilityRegistry();
+    return send(req, res, 200, {
+      ok: true,
+      version: "0.3.1",
+      provider: "opentyphoon",
+      model: TYPHOON_MODEL,
+      keyConfigured: capabilities.typhoon.configured,
+      typhoonConfigured: capabilities.typhoon.configured,
+      ompEnabled: capabilities.omp.enabled && capabilities.omp.configured,
+      workspaceConfigured: Boolean(WEBAI_WORKSPACE) && existsSync(WEBAI_WORKSPACE),
+      authEnabled: Boolean(WEB_AUTH_TOKEN),
+      capabilities,
+    });
   }
-  if (url.pathname === "/api/typhoon/chat" && req.method !== "POST") {
-    return send(req, res, 405, { error: "method_not_allowed" }, { Allow: "POST, OPTIONS" });
+
+  if (req.method === "GET" && url.pathname === "/") {
+    return send(req, res, 200, { name: "WebAi API", version: "0.3.1", health: "/api/health" });
   }
-  if (req.method !== "POST" || url.pathname !== "/api/typhoon/chat") {
-    return send(req, res, 404, { error: "not_found" });
-  }
-  if (req.headers.authorization || req.headers["x-api-key"]) {
-    return send(req, res, 400, { error: "client_authorization_not_allowed" });
-  }
+
   if (!withinRateLimit(req)) {
     return send(req, res, 429, { error: "rate_limited" }, { "Retry-After": "60" });
   }
+  if (!authOk(req)) {
+    return send(req, res, 401, { error: "unauthorized" });
+  }
+
   try {
-    const chat = validateChat(await readJson(req));
-    return send(req, res, 200, await requestTyphoon(chat));
+    if (req.method === "POST" && url.pathname === "/api/typhoon/chat") {
+      if (req.headers.authorization || req.headers["x-api-key"]) {
+        return send(req, res, 400, { error: "client_authorization_not_allowed" });
+      }
+      const chat = validateChat(await readJson(req));
+      return send(req, res, 200, await requestTyphoon(chat));
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/chat") {
+      const chat = validateChat(await readJson(req));
+      const raw = await requestTyphoon(chat);
+      return send(req, res, 200, {
+        provider: "opentyphoon",
+        model: raw.model || TYPHOON_MODEL,
+        content: raw?.choices?.[0]?.message?.content || "",
+        usage: raw.usage || null,
+      });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/plan") {
+      const body = await readJson(req);
+      const goal = String(body.goal || "").trim();
+      if (!goal) return send(req, res, 400, { error: "goal_required" });
+      const raw = await requestTyphoon({
+        messages: [
+          { role: "system", content: "Create a concise software implementation plan with acceptance criteria. Respond in the user's language." },
+          { role: "user", content: goal.slice(0, MAX_CONTENT_CHARS) },
+        ],
+        temperature: 0.2,
+        max_tokens: 4096,
+      });
+      return send(req, res, 200, {
+        provider: "opentyphoon",
+        model: raw.model || TYPHOON_MODEL,
+        plan: raw?.choices?.[0]?.message?.content || "",
+      });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/omp/prompt") {
+      const body = await readJson(req);
+      return send(req, res, 200, await runOmp(String(body.prompt || "")));
+    }
+
+    if (url.pathname === "/api/typhoon/chat" || url.pathname === "/api/chat" || url.pathname === "/api/plan" || url.pathname === "/api/omp/prompt") {
+      return send(req, res, 405, { error: "method_not_allowed" }, { Allow: "POST, OPTIONS" });
+    }
+
+    return send(req, res, 404, { error: "not_found" });
   } catch (error) {
-    const status = Number(error?.status) || 502;
+    const status = Number(error?.status) || (error?.name === "AbortError" ? 504 : 502);
     return send(req, res, status, { error: error?.message || "upstream_error" }, error?.retryAfter || {});
   }
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`WebAi Typhoon proxy listening on 127.0.0.1:${PORT}`);
+  const caps = capabilityRegistry();
+  console.log(`WebAi API listening on 127.0.0.1:${PORT}`);
+  console.log(`Typhoon configured: ${caps.typhoon.configured} | OMP: ${caps.omp.enabled}/${caps.omp.configured}`);
 });
