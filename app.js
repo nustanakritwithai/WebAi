@@ -3,7 +3,6 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 
 const els = {
   apiBase: $("#apiBase"),
-  token: $("#sessionToken"),
   save: $("#saveConfig"),
   systemButton: $("#systemButton"),
   systemDot: $("#systemDot"),
@@ -60,8 +59,7 @@ const els = {
 };
 
 const state = {
-  apiBase: localStorage.getItem("webai.apiBase") || "",
-  token: localStorage.getItem("webai.sessionToken") || "",
+  apiBase: localStorage.getItem("webai.apiBase") || "https://157.85.96.139:5444",
   connected: false,
   typhoonConfigured: false,
   ompEnabled: false,
@@ -74,7 +72,6 @@ const state = {
 };
 
 els.apiBase.value = state.apiBase;
-els.token.value = state.token;
 els.taskCount.textContent = state.completedTasks;
 
 function normalizedBase() {
@@ -87,11 +84,7 @@ function api(path) {
   return `${base}${path}`;
 }
 
-function headers() {
-  const h = { "Content-Type": "application/json" };
-  if (state.token) h["x-webai-token"] = state.token;
-  return h;
-}
+function headers() { return { "Content-Type": "application/json" }; }
 
 function setDot(el, kind = "idle") {
   if (!el) return;
@@ -259,8 +252,8 @@ function setConnecting() {
 
 function setConnected(data) {
   state.connected = true;
-  state.typhoonConfigured = !!data.typhoonConfigured;
-  state.ompEnabled = !!data.ompEnabled;
+  state.typhoonConfigured = !!data.keyConfigured;
+  state.ompEnabled = false;
 
   setDot(els.backendStatusDot, "ok");
   els.backendState.textContent = "ออนไลน์";
@@ -281,11 +274,11 @@ function setConnected(data) {
     els.systemLabel.textContent = "Backend ready";
   }
 
-  els.model.textContent = data.model || "OpenTyphoon";
+  els.model.textContent = "typhoon-v2.5-30b-a3b-instruct";
   els.modelStatus.textContent = state.typhoonConfigured ? "พร้อมรับ Task" : "Backend พร้อม · รอ API key";
   els.connectionSummary.textContent = state.typhoonConfigured ? "เชื่อมต่อสำเร็จ" : "Backend ออนไลน์";
   els.connectionDetail.textContent = state.typhoonConfigured
-    ? `${data.model || "OpenTyphoon"} · OMP ${state.ompEnabled ? "ON" : "OFF"}`
+    ? "Secure OpenTyphoon proxy พร้อมใช้งาน"
     : "ยังไม่พบ TYPHOON_API_KEY บน server";
   els.connectionResultIcon.textContent = state.typhoonConfigured ? "✓" : "!";
   setStep(els.stepUrl, "done");
@@ -364,7 +357,7 @@ async function health() {
     const r = await fetch(api("/api/health"), { headers: headers(), signal: ctl.signal });
     const data = await readJsonResponse(r);
     setConnected(data);
-    log(`Backend connected · ${data.model || "OpenTyphoon"} · OMP ${data.ompEnabled ? "ON" : "OFF"}`, "ok");
+    log("Backend connected · secure OpenTyphoon proxy", "ok");
   } catch (e) {
     const message = e.name === "AbortError" ? "Backend ไม่ตอบภายใน 12 วินาที" : e.message;
     setConnectionFailed(message);
@@ -454,8 +447,16 @@ async function callPlan(goal) {
   setProgress(1);
   addTimeline("Planning", "OpenTyphoon กำลังสร้าง structured plan", "working");
   log("Request structured plan from OpenTyphoon");
-  const data = await request("/api/plan", { goal });
-  showPlan(data.plan);
+  const data = await request("/api/typhoon/chat", {
+    messages: [
+      { role: "system", content: "Create a concise software implementation plan with acceptance criteria. Respond in the user's language." },
+      { role: "user", content: goal }
+    ],
+    temperature: 0.2,
+    max_tokens: 4096
+  });
+  const answer = data?.choices?.[0]?.message?.content || "(ไม่มีข้อความตอบกลับ)";
+  showPlan(answer);
   addTimeline("Plan ready", "Structured plan created", "ok");
   log("Plan ready", "ok");
   return data;
@@ -470,12 +471,12 @@ async function callChat(goal, review = false) {
   addTimeline(review ? "Reviewing" : "Thinking", "OpenTyphoon is analyzing the task", "working");
   log(review ? "Request review from OpenTyphoon" : "Send task to OpenTyphoon");
   state.messages.push({ role: "user", content: prompt });
-  const data = await request("/api/chat", { messages: state.messages });
-  const answer = data.content || "(ไม่มีข้อความตอบกลับ)";
+  const data = await request("/api/typhoon/chat", { messages: state.messages, temperature: 0.2, max_tokens: 4096 });
+  const answer = data?.choices?.[0]?.message?.content || "(ไม่มีข้อความตอบกลับ)";
   state.messages.push({ role: "assistant", content: answer });
   showPlan(answer);
-  addTimeline(review ? "Review ready" : "Typhoon response ready", `${data.latencyMs ?? "?"} ms`, "ok");
-  log(`Typhoon response · ${data.latencyMs ?? "?"} ms`, "ok");
+  addTimeline(review ? "Review ready" : "Typhoon response ready", "ผ่าน secure proxy", "ok");
+  log("Typhoon response received", "ok");
   return data;
 }
 
@@ -585,9 +586,7 @@ function resetTask() {
 
 els.save.addEventListener("click", () => {
   state.apiBase = els.apiBase.value.trim();
-  state.token = els.token.value.trim();
   localStorage.setItem("webai.apiBase", state.apiBase);
-  localStorage.setItem("webai.sessionToken", state.token);
 
   if (!normalizedBase()) {
     setConnectionWaiting();

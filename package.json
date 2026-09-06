@@ -6,6 +6,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server/index.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "test": "node scripts/smoke.mjs"
   }
 }
