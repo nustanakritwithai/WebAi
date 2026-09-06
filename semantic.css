@@ -1,0 +1,168 @@
+/* === UI V0.3 Semantic Color System === */
+:root{
+  --think:#55c7ff;
+  --think-soft:#9bddff;
+  --know:#b18cff;
+  --know-soft:#d7c4ff;
+  --do:#ff9f43;
+  --do-soft:#ffc27d;
+  --memory:#ff71c8;
+  --memory-soft:#ffb5df;
+  --comms:#45dfd2;
+  --comms-soft:#9af4eb;
+  --measure:#35e0a6;
+  --measure-soft:#96f0cf;
+  --verify:#72e7a9;
+  --verify-soft:#b8f6d4;
+  --info:#67a8ff;
+  --warning:#ffd166;
+  --danger:#ff6f85;
+}
+
+/* Typography hierarchy */
+.brand strong{
+  background:linear-gradient(90deg,#ffffff 0%,#9bd4ff 45%,#c2a6ff 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  letter-spacing:.01em;
+}
+.welcome .eyebrow{color:var(--think);text-shadow:0 0 18px rgba(85,199,255,.18)}
+.welcome h1{letter-spacing:-.025em}
+.welcome h1>span{
+  background:linear-gradient(90deg,var(--think) 0%,#7da7ff 45%,var(--know) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  text-shadow:0 0 26px rgba(85,199,255,.12);
+}
+.welcome p strong,.securityNote b{color:#d9eaff}
+.sectionHead h2,.cardHead h3,.newTaskHead h2{color:#f8fbff}
+
+/* Primary model = THINK */
+#modelName,#activeModel{color:var(--think);text-shadow:0 0 16px rgba(85,199,255,.16)}
+.modelMini span{color:#7fc8f4}
+#typhoonState{color:var(--think-soft)}
+#ompState{color:var(--do-soft)}
+#backendState{color:var(--verify-soft)}
+#systemLabel{color:#dceaff}
+
+/* Section semantics */
+.newTaskCard .sectionKicker{color:var(--think)}
+#tasks .sectionKicker{color:var(--do)}
+#workspace .sectionKicker{color:var(--verify)}
+#monitor .sectionKicker{color:var(--comms)}
+.eventsCard .sectionKicker{color:#8fa9ff}
+.drawer .sectionKicker{color:var(--think)}
+.inspector .sectionKicker{color:var(--verify)}
+
+/* Navigation semantics */
+.railGroup:first-child .railItem:nth-child(2) span{color:var(--think)}
+.railGroup:first-child .railItem:nth-child(3) span{color:var(--do)}
+.railGroup:first-child .railItem:nth-child(4) span{color:#86bfff}
+.railGroup:first-child .railItem:nth-child(5) span{color:var(--measure)}
+.railGroup:nth-child(2) .railItem:nth-child(2) span{color:var(--memory)}
+.railGroup:nth-child(2) .railItem:nth-child(3) span{color:var(--comms)}
+.railItem.active b{color:#fff}
+
+/* Overview / system cards */
+.overviewItem:nth-child(1){border-color:rgba(114,231,169,.20)}
+.overviewItem:nth-child(1) small{color:#79b995}
+.overviewItem:nth-child(2){border-color:rgba(85,199,255,.22)}
+.overviewItem:nth-child(2) small{color:#7acbf4}
+.overviewItem:nth-child(3){border-color:rgba(255,159,67,.22)}
+.overviewItem:nth-child(3) small{color:#d79c61}
+.overviewItem b{font-weight:850}
+
+/* Prompt chips: visually distinct but restrained */
+.promptChip:nth-child(1){color:#a8dfff;border-color:rgba(85,199,255,.28);background:rgba(38,104,145,.10)}
+.promptChip:nth-child(2){color:#cfbaff;border-color:rgba(177,140,255,.30);background:rgba(100,69,156,.10)}
+.promptChip:nth-child(3){color:#ffc08b;border-color:rgba(255,159,67,.30);background:rgba(145,82,29,.10)}
+.promptChip:nth-child(1):hover{box-shadow:0 0 18px rgba(85,199,255,.10)}
+.promptChip:nth-child(2):hover{box-shadow:0 0 18px rgba(177,140,255,.10)}
+.promptChip:nth-child(3):hover{box-shadow:0 0 18px rgba(255,159,67,.10)}
+
+/* Run mode & CTA */
+.modeSelect>span{color:#9ebeff}
+.modeSelect select:focus{border-color:var(--think);box-shadow:0 0 0 3px rgba(85,199,255,.08)}
+.runTaskBtn{
+  background:linear-gradient(110deg,#238dff 0%,#586cff 48%,#8d63ff 100%);
+  box-shadow:0 12px 28px rgba(70,107,255,.24),0 0 22px rgba(117,91,255,.08);
+}
+.runTaskBtn:not(:disabled):hover{transform:translateY(-1px);filter:brightness(1.08)}
+
+/* Current task semantic stages */
+.taskIdentity .taskId{color:#8cc9ff;text-shadow:0 0 14px rgba(85,199,255,.14)}
+#currentTaskGoal{color:#f7fbff}
+.progressStep:nth-of-type(1) b{color:var(--think-soft)}
+.progressStep:nth-of-type(2) b{color:var(--know-soft)}
+.progressStep:nth-of-type(3) b{color:var(--do-soft)}
+.progressStep:nth-of-type(4) b{color:var(--verify-soft)}
+.progressStep:nth-of-type(1).active>span{border-color:var(--think);background:rgba(28,93,126,.55);box-shadow:0 0 18px rgba(85,199,255,.18)}
+.progressStep:nth-of-type(2).active>span{border-color:var(--know);background:rgba(83,58,127,.55);box-shadow:0 0 18px rgba(177,140,255,.18)}
+.progressStep:nth-of-type(3).active>span{border-color:var(--do);background:rgba(111,67,29,.56);box-shadow:0 0 18px rgba(255,159,67,.18)}
+.progressStep:nth-of-type(4).active>span{border-color:var(--verify);background:rgba(29,101,72,.55);box-shadow:0 0 18px rgba(114,231,169,.18)}
+.progressStep.done b{color:var(--verify-soft)}
+.progressStep.failed b{color:#ff9bad}
+.taskMeta div:nth-child(1) small{color:#d19e70}.taskMeta div:nth-child(1) b{color:var(--do-soft)}
+.taskMeta div:nth-child(2) small{color:#6fbfe9}.taskMeta div:nth-child(2) b{color:var(--think-soft)}
+.taskMeta div:nth-child(3) small{color:#9d8bd0}.taskMeta div:nth-child(3) b{color:#cbb7ff}
+.taskMeta div:nth-child(4) small{color:#75a4bc}.taskMeta div:nth-child(4) b{color:#c4d6e7}
+
+/* Timeline */
+.timelineItem b{color:#cae3ff;font-weight:850}
+.timelineItem>span{border:1px solid rgba(85,199,255,.20)}
+.timelineItem small{color:#7f94b3}
+.timelineItem time{color:#607f9f}
+.timelineItem:hover{background:rgba(69,112,166,.055);border-radius:8px}
+
+/* Workspace tabs carry meaning */
+.tabBtn[data-tab="plan"]{color:#a9b9d4}
+.tabBtn[data-tab="preview"]{color:#8ccdf4}
+.tabBtn[data-tab="diff"]{color:#d4a477}
+.tabBtn[data-tab="tests"]{color:#8acaa7}
+.tabBtn[data-tab="plan"].active{color:var(--know-soft);background:rgba(97,70,151,.28);box-shadow:inset 0 0 0 1px rgba(177,140,255,.16)}
+.tabBtn[data-tab="preview"].active{color:var(--think-soft);background:rgba(32,100,139,.28);box-shadow:inset 0 0 0 1px rgba(85,199,255,.15)}
+.tabBtn[data-tab="diff"].active{color:var(--do-soft);background:rgba(122,75,34,.28);box-shadow:inset 0 0 0 1px rgba(255,159,67,.14)}
+.tabBtn[data-tab="tests"].active{color:var(--verify-soft);background:rgba(33,103,74,.28);box-shadow:inset 0 0 0 1px rgba(114,231,169,.14)}
+.planBox{color:#cfe1ff}
+.previewToolbar b{color:var(--think-soft)}
+.diffSummary b{color:var(--do-soft)}
+.diffSummary span{color:#9eeec9}
+
+/* Verification: each gate has a recognizable accent */
+.verificationList>div:nth-child(1) b{color:#a8cfff}
+.verificationList>div:nth-child(2) b{color:var(--verify-soft)}
+.verificationList>div:nth-child(3) b{color:var(--comms-soft)}
+.verificationList>div:nth-child(4) b{color:#9bcfff}
+.verificationList>div:nth-child(5) b{color:var(--know-soft)}
+.verificationList>div:nth-child(6) b{color:#ffe19a}
+.verificationList>div:nth-child(7) b{color:var(--measure-soft)}
+.verificationList>div:nth-child(8) b{color:#aef0c6}
+.gateBadge.waiting{color:#ffdc82}
+.gateBadge.ready{color:var(--verify-soft);text-shadow:0 0 12px rgba(114,231,169,.18)}
+.gateBadge.failed{color:#ff9aad}
+
+/* AI Team identity colors */
+.teamGrid>div:nth-child(1) b{color:var(--think)}
+.teamGrid>div:nth-child(2) b{color:#77a8ff}
+.teamGrid>div:nth-child(3) b{color:var(--do)}
+.teamGrid>div:nth-child(4) b{color:var(--know)}
+.teamGrid>div:nth-child(5) b{color:var(--memory)}
+.teamGrid>div:nth-child(6) b{color:var(--measure)}
+.teamGrid>div:nth-child(1){border-color:rgba(85,199,255,.13)}
+.teamGrid>div:nth-child(3){border-color:rgba(255,159,67,.13)}
+.teamGrid>div:nth-child(4){border-color:rgba(177,140,255,.13)}
+.teamGrid>div:nth-child(5){border-color:rgba(255,113,200,.13)}
+.teamGrid>div:nth-child(6){border-color:rgba(53,224,166,.13)}
+
+/* Runtime log semantics */
+.logline{color:#91a9c8}.logline.ok{color:var(--verify-soft)}.logline.bad{color:#ff96a8}.logline.warn{color:#ffda85}.logline.info{color:#98c9ff}
+
+/* Drawer / connection emphasis */
+.connectionStep.done b{color:var(--verify-soft)}
+.connectionStep.active b{color:var(--think-soft)}
+.connectionResult b{color:#e8f2ff}
+.securityNote span{filter:saturate(1.15)}
+
+/* Strong focus & accessibility: color is never the only signal */
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{
+  outline:2px solid var(--think);outline-offset:2px;
+}
+@media (prefers-reduced-motion:reduce){button,a{transition:none}.runTaskBtn:not(:disabled):hover{transform:none}}
