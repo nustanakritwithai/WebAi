@@ -1,7 +1,9 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { URL } from "node:url";
+import { createAgentService } from "./agent.mjs";
 
 const PORT = Number(process.env.PORT || "8787");
 const DEFAULT_BASE_URL = "https://api.opentyphoon.ai/v1";
@@ -12,6 +14,8 @@ const MAX_CONTENT_CHARS = 12_000;
 const REQUESTS_PER_MINUTE = 30;
 const UPSTREAM_TIMEOUT_MS = 60_000;
 const OMP_TIMEOUT_MS = 180_000;
+const VERIFICATION_TIMEOUT_MS = 180_000;
+const VERIFICATION_OUTPUT_CHARS = 12_000;
 const buckets = new Map();
 
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65_535) {
@@ -48,6 +52,7 @@ const OMP_ENABLED = envBool("OMP_ENABLED");
 const OMP_COMMAND = process.env.OMP_COMMAND || "omp";
 const OMP_PROVIDER = process.env.OMP_PROVIDER || "opentyphoon";
 const OMP_MODEL = process.env.OMP_MODEL || TYPHOON_MODEL;
+const AGENT_STATE_PATH = process.env.AGENT_STATE_PATH || resolve(process.cwd(), ".webai", "agent-state.json");
 
 const ECC_ENABLED = envBool("ECC_ENABLED");
 const ECC_ROOT = process.env.ECC_ROOT || "";
@@ -337,6 +342,56 @@ function runOmp(prompt) {
   });
 }
 
+function runVerification() {
+  const workspaceConfigured = Boolean(WEBAI_WORKSPACE) && existsSync(WEBAI_WORKSPACE);
+  if (!workspaceConfigured) {
+    throw Object.assign(new Error("workspace_not_configured"), { status: 503 });
+  }
+
+  return new Promise((resolveResult, reject) => {
+    const command = process.platform === "win32" ? "npm.cmd" : "npm";
+    const child = spawn(command, ["test"], {
+      cwd: WEBAI_WORKSPACE,
+      env: ompChildEnvironment(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    let settled = false;
+    const append = (chunk) => {
+      if (output.length < VERIFICATION_OUTPUT_CHARS) output += String(chunk).slice(0, VERIFICATION_OUTPUT_CHARS - output.length);
+    };
+    const finishError = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    };
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      finishError(Object.assign(new Error("verification_timeout"), { status: 504 }));
+    }, VERIFICATION_TIMEOUT_MS);
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", append);
+    child.stderr.on("data", append);
+    child.on("error", () => finishError(Object.assign(new Error("verification_spawn_failed"), { status: 503 })));
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolveResult({ ok: code === 0, command: "npm test", exitCode: code, output });
+    });
+  });
+}
+
+const agentService = createAgentService({
+  requestModel: requestTyphoon,
+  runWorker: runOmp,
+  runVerification,
+  statePath: AGENT_STATE_PATH,
+});
+
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin;
   if (origin && !allowedOrigin(origin)) {
@@ -361,6 +416,7 @@ const server = http.createServer(async (req, res) => {
       ompEnabled: capabilities.omp.enabled && capabilities.omp.configured,
       workspaceConfigured: Boolean(WEBAI_WORKSPACE) && existsSync(WEBAI_WORKSPACE),
       authEnabled: Boolean(WEB_AUTH_TOKEN),
+      agent: agentService.status(),
       capabilities,
     });
   }
@@ -420,7 +476,31 @@ const server = http.createServer(async (req, res) => {
       return send(req, res, 200, await runOmp(String(body.prompt || "")));
     }
 
-    if (url.pathname === "/api/typhoon/chat" || url.pathname === "/api/chat" || url.pathname === "/api/plan" || url.pathname === "/api/omp/prompt") {
+    const isAgentCollection = url.pathname === "/api/tasks" || url.pathname === "/api/agent/tasks";
+    const taskMatch = url.pathname.match(/^\/api\/(?:agent\/)?tasks\/([^/]+)(?:\/(approve|verify))?$/);
+    if (isAgentCollection && req.method === "POST") {
+      const task = await agentService.createTask(await readJson(req));
+      return send(req, res, 201, { task });
+    }
+    if (isAgentCollection && req.method === "GET") {
+      return send(req, res, 200, { tasks: agentService.listTasks() });
+    }
+    if (taskMatch) {
+      const taskId = decodeURIComponent(taskMatch[1]);
+      const action = taskMatch[2];
+      if (req.method === "GET" && !action) {
+        return send(req, res, 200, { task: agentService.getTask(taskId) });
+      }
+      if (req.method === "POST" && action === "approve") {
+        return send(req, res, 200, { task: await agentService.approveAndExecute(taskId) });
+      }
+      if (req.method === "POST" && action === "verify") {
+        return send(req, res, 200, { task: await agentService.verify(taskId) });
+      }
+      return send(req, res, 405, { error: "method_not_allowed" }, { Allow: "GET, POST, OPTIONS" });
+    }
+
+    if (url.pathname === "/api/typhoon/chat" || url.pathname === "/api/chat" || url.pathname === "/api/plan" || url.pathname === "/api/omp/prompt" || isAgentCollection) {
       return send(req, res, 405, { error: "method_not_allowed" }, { Allow: "POST, OPTIONS" });
     }
 

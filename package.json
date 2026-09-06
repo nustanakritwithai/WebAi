@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node server/index.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "test": "node scripts/smoke.mjs"
+    "agent-smoke": "node scripts/agent-smoke.mjs",
+    "test": "node scripts/smoke.mjs && node scripts/agent-smoke.mjs"
   }
 }

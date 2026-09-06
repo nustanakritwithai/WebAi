@@ -42,6 +42,10 @@ const els = {
   activeModel: $("#activeModel"),
   activeMode: $("#activeMode"),
   elapsedTime: $("#elapsedTime"),
+  approveExecution: $("#approveExecutionBtn"),
+  verifyTask: $("#verifyTaskBtn"),
+  agentActionHint: $("#agentActionHint"),
+  agentError: $("#agentError"),
   timeline: $("#timeline"),
   clearTimeline: $("#clearTimelineBtn"),
   clearTask: $("#clearTaskBtn"),
@@ -67,6 +71,8 @@ const state = {
   taskId: null,
   taskStart: null,
   taskTimer: null,
+  agentTask: null,
+  agentAvailable: null,
   completedTasks: Number(localStorage.getItem("webai.completedTasks") || "0"),
   messages: [{ role: "system", content: "You are WebAi, an AI software engineering assistant. Respond in the user's language." }]
 };
@@ -178,12 +184,16 @@ function applyActionState() {
   const hasGoal = !!els.input.value.trim();
 
   let enabled = false;
-  if (mode === "execute") enabled = canOmp && hasGoal;
+  if (mode === "agent") enabled = canTyphoon && hasGoal;
+  else if (mode === "execute") enabled = canOmp && hasGoal;
   else enabled = canTyphoon && hasGoal;
 
   els.run.disabled = !enabled;
 
-  if (state.busy) return;
+  if (state.busy) {
+    updateAgentActions();
+    return;
+  }
 
   if (!state.connected) {
     els.taskStatus.textContent = "รอ Backend";
@@ -200,6 +210,7 @@ function applyActionState() {
   }
 
   const modeText = {
+    agent: "Create Agent Task → Review Plan",
     auto: state.ompEnabled ? "Run Task → Plan + Execute" : "Run Task → Ask Typhoon",
     plan: "Run Task → Generate Plan",
     ask: "Run Task → Ask Typhoon",
@@ -207,6 +218,42 @@ function applyActionState() {
     review: "Run Task → Review"
   };
   els.run.querySelector("span").textContent = modeText[mode] || "Run Task";
+  updateAgentActions();
+}
+
+function agentStatusLabel(status) {
+  return ({
+    planning: "กำลังวางแผน",
+    awaiting_approval: "รอตรวจแผนและอนุมัติ",
+    executing: "กำลัง execute",
+    awaiting_verification: "รอ Verification",
+    verifying: "กำลัง verify",
+    completed: "เสร็จสมบูรณ์หลัง verify",
+    verification_failed: "Verification ไม่ผ่าน",
+    failed: "Agent ล้มเหลว",
+  })[status] || status || "ยังไม่มี Agent task";
+}
+
+function setAgentError(message = "") {
+  if (!els.agentError) return;
+  els.agentError.hidden = !message;
+  els.agentError.textContent = message;
+}
+
+function updateAgentActions() {
+  const task = state.agentTask;
+  const isAgentMode = els.mode.value === "agent";
+  const canApprove = isAgentMode && !state.busy && task?.status === "awaiting_approval";
+  const canVerify = isAgentMode && !state.busy && task?.status === "awaiting_verification";
+  if (els.approveExecution) els.approveExecution.disabled = !canApprove;
+  if (els.verifyTask) els.verifyTask.disabled = !canVerify;
+  if (!els.agentActionHint) return;
+  if (!task) els.agentActionHint.textContent = "Agent จะหยุดรอให้คุณตรวจแผนก่อน execution";
+  else if (task.status === "awaiting_approval") els.agentActionHint.textContent = "ตรวจ Plan ด้านล่าง แล้วอนุมัติเมื่อพร้อมให้ Agent แก้ไฟล์จริง";
+  else if (task.status === "awaiting_verification") els.agentActionHint.textContent = "Execution จบแล้ว กด Run Verification เพื่อพิสูจน์ผลลัพธ์ก่อน DONE";
+  else if (task.status === "completed") els.agentActionHint.textContent = "ผ่าน Verification แล้ว งานนี้จึงถือว่า DONE";
+  else if (task.status === "verification_failed") els.agentActionHint.textContent = "Verification ไม่ผ่าน งานยังไม่ถือว่า DONE — ตรวจ evidence แล้วแก้ไขต่อ";
+  else els.agentActionHint.textContent = `สถานะปัจจุบัน: ${agentStatusLabel(task.status)}`;
 }
 
 function setConnectionWaiting() {
@@ -252,7 +299,8 @@ function setConnecting() {
 function setConnected(data) {
   state.connected = true;
   state.typhoonConfigured = !!data.keyConfigured;
-  state.ompEnabled = false;
+  state.ompEnabled = !!data.ompEnabled;
+  state.agentAvailable = data.capabilities?.agent?.enabled === true ? true : null;
   setDot(els.backendStatusDot, "ok");
   els.backendState.textContent = "ออนไลน์";
   setDot(els.typhoonStatusDot, state.typhoonConfigured ? "ok" : "warn");
@@ -305,10 +353,17 @@ async function readJsonResponse(r) {
   if (!contentType.includes("application/json")) {
     const text = await r.text();
     const html = text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html");
-    throw new Error(html ? "ปลายทางตอบหน้า HTML แทน API — ตรวจสอบ Backend URL" : `Backend ตอบไม่ใช่ JSON (${r.status})`);
+    const error = new Error(html ? "ปลายทางตอบหน้า HTML แทน API — ตรวจสอบ Backend URL" : `Backend ตอบไม่ใช่ JSON (${r.status})`);
+    error.status = r.status;
+    throw error;
   }
   const data = await r.json();
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok) {
+    const error = new Error(data.error || `HTTP ${r.status}`);
+    error.status = r.status;
+    error.code = data.error || "http_error";
+    throw error;
+  }
   return data;
 }
 
@@ -321,6 +376,27 @@ async function request(path, body, timeoutMs = 65000) {
     return await readJsonResponse(r);
   } catch (e) {
     if (e.name === "AbortError") throw new Error("Backend ใช้เวลาตอบนานเกินกำหนด");
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+async function requestAgent(path, body = undefined, timeoutMs = 190000) {
+  if (!state.connected) throw new Error("กรุณาเชื่อมต่อ Backend ก่อน");
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const options = { method: "POST", headers: headers(), signal: ctl.signal };
+    if (body !== undefined) options.body = JSON.stringify(body);
+    const response = await fetch(api(path), options);
+    return await readJsonResponse(response);
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("Agent ใช้เวลาตอบนานเกินกำหนด");
+    if (e.status === 404) {
+      state.agentAvailable = false;
+      const error = new Error("Backend นี้ยังไม่มี Agent API (/api/agent/tasks)");
+      error.code = "agent_api_unavailable";
+      throw error;
+    }
     throw e;
   } finally { clearTimeout(timer); }
 }
@@ -344,6 +420,9 @@ async function health() {
 
 function makeTask(goal, mode) {
   state.taskId = `TASK-${String(Date.now()).slice(-6)}`;
+  state.agentTask = null;
+  setAgentError("");
+  updateAgentActions();
   state.taskStart = Date.now();
   els.currentTaskId.textContent = state.taskId;
   els.currentTaskGoal.textContent = goal;
@@ -358,7 +437,7 @@ function makeTask(goal, mode) {
   document.querySelector("#tasks")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function modeLabel(mode) { return ({ auto: "Auto", plan: "Plan only", ask: "Ask AI", execute: "Execute", review: "Review" })[mode] || mode; }
+function modeLabel(mode) { return ({ agent: "Supervised Agent", auto: "Auto", plan: "Plan only", ask: "Ask AI", execute: "Execute", review: "Review" })[mode] || mode; }
 function setProgress(index, failed = false) {
   $$("#progressSteps .progressStep").forEach((step, i) => {
     step.classList.remove("done", "active", "failed");
@@ -368,7 +447,178 @@ function setProgress(index, failed = false) {
 }
 function startTimer() { clearInterval(state.taskTimer); const update = () => { if (!state.taskStart) return; const sec = Math.floor((Date.now() - state.taskStart) / 1000); els.elapsedTime.textContent = sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`; }; update(); state.taskTimer = setInterval(update, 1000); }
 function stopTimer() { clearInterval(state.taskTimer); state.taskTimer = null; }
-function finishTask(summary, success = true) { stopTimer(); els.currentTaskDetail.textContent = summary; if (success) { state.completedTasks += 1; localStorage.setItem("webai.completedTasks", String(state.completedTasks)); els.taskCount.textContent = state.completedTasks; setProgress(3); els.gateBadge.textContent = "WAITING"; els.gateBadge.className = "gateBadge waiting"; els.gateMessage.textContent = "มีผลลัพธ์แล้ว แต่ยังต้องผ่าน Verification Gate ก่อน DONE"; } else { els.taskStatus.textContent = "Task failed"; els.taskStatus.className = "pill bad"; } state.busy = false; applyActionState(); }
+function finishTask(summary, success = true) {
+  stopTimer();
+  els.currentTaskDetail.textContent = summary;
+  if (success) {
+    setProgress(3);
+    els.gateBadge.textContent = "WAITING";
+    els.gateBadge.className = "gateBadge waiting";
+    els.gateMessage.textContent = "มีผลลัพธ์แล้ว แต่ยังต้องผ่าน Verification Gate ก่อน DONE";
+    els.taskStatus.textContent = "รอ Verification";
+    els.taskStatus.className = "pill warn";
+  } else {
+    els.taskStatus.textContent = "Task failed";
+    els.taskStatus.className = "pill bad";
+  }
+  state.busy = false;
+  applyActionState();
+}
+
+function applyAgentTask(task) {
+  if (!task) return;
+  state.agentTask = task;
+  state.taskId = task.id || state.taskId;
+  els.currentTaskId.textContent = state.taskId || "AGENT TASK";
+  els.currentTaskGoal.textContent = task.goal || els.currentTaskGoal.textContent;
+  els.currentTaskDetail.textContent = task.error || agentStatusLabel(task.status);
+  els.activeAgent.textContent = task.worker?.worker || "AI CPU";
+  els.activeModel.textContent = els.model.textContent || "OpenTyphoon";
+  els.taskStatus.textContent = agentStatusLabel(task.status);
+  els.taskStatus.className = task.status === "completed" ? "pill ok" : ["failed", "verification_failed"].includes(task.status) ? "pill bad" : "pill info";
+
+  const progressByStatus = { planning: 1, awaiting_approval: 1, executing: 2, awaiting_verification: 3, verifying: 3, completed: 4, verification_failed: 3, failed: 1 };
+  setProgress(Math.min(progressByStatus[task.status] ?? 1, 4), ["failed", "verification_failed"].includes(task.status));
+  if (task.plan) showPlan(task.plan);
+  if (task.worker?.content) showPlan(task.worker.content);
+  if (Array.isArray(task.events)) {
+    const latest = task.events[task.events.length - 1];
+    if (latest) addTimeline(agentEventTitle(latest.type), agentEventDetail(latest), latest.type.includes("failed") ? "bad" : latest.type.includes("passed") ? "ok" : "working");
+  }
+  if (task.verification) applyAgentVerification(task.verification);
+  if (task.status === "completed") {
+    els.gateBadge.textContent = "PASS";
+    els.gateBadge.className = "gateBadge pass";
+    els.gateMessage.textContent = "Verification ผ่านแล้ว งานนี้จึงถือว่า DONE";
+  } else if (task.status === "verification_failed") {
+    els.gateBadge.textContent = "FAILED";
+    els.gateBadge.className = "gateBadge fail";
+    els.gateMessage.textContent = task.verification?.error || "Verification ไม่ผ่าน — งานยังไม่ถือว่า DONE";
+  } else if (task.status === "awaiting_verification") {
+    els.gateBadge.textContent = "READY TO VERIFY";
+    els.gateBadge.className = "gateBadge waiting";
+    els.gateMessage.textContent = "Execution เสร็จแล้ว แต่ยังไม่ผ่าน Verification Gate";
+  }
+  updateAgentActions();
+}
+
+function agentEventTitle(type) {
+  return ({ task_created: "Agent task created", plan_ready: "Plan ready", execution_approved: "Execution approved", worker_finished: "Execution finished", verification_started: "Verification started", verification_passed: "Verification passed", verification_failed: "Verification failed", planning_failed: "Planning failed", worker_failed: "Execution failed" })[type] || type || "Agent event";
+}
+
+function agentEventDetail(event) {
+  return event?.error || (event?.at ? new Date(event.at).toLocaleTimeString() : "");
+}
+
+function applyAgentVerification(evidence) {
+  const checks = evidence?.checks || evidence?.results || evidence;
+  if (!checks || typeof checks !== "object") return;
+  const aliases = { build: "build", unit: "unit", unit_tests: "unit", integration: "integration", browser: "browser", ecc: "ecc", security: "security", harpoon: "harpoon", regression: "regression" };
+  const entries = $$("#verificationList > div");
+  const order = ["build", "unit", "integration", "browser", "ecc", "security", "harpoon", "regression"];
+  order.forEach((key, index) => {
+    const sourceKey = Object.keys(aliases).find((candidate) => aliases[candidate] === key && checks[candidate] != null);
+    const value = sourceKey ? checks[sourceKey] : checks[key];
+    if (value == null || !entries[index]) return;
+    const passed = value === true || value === "pass" || value === "passed" || value?.ok === true || value?.status === "pass" || value?.status === "passed";
+    const dot = entries[index].querySelector(".checkDot");
+    const label = entries[index].querySelector("em");
+    dot.textContent = passed ? "✓" : "×";
+    dot.className = `checkDot ${passed ? "pass" : "fail"}`;
+    label.textContent = passed ? "Passed" : "Failed";
+  });
+}
+
+function incrementCompletedTask() {
+  if (state.agentTask?.status !== "completed") return;
+  state.completedTasks += 1;
+  localStorage.setItem("webai.completedTasks", String(state.completedTasks));
+  els.taskCount.textContent = state.completedTasks;
+}
+
+async function createAgentTask(goal) {
+  const task = await requestAgent("/api/agent/tasks", { goal });
+  state.agentAvailable = true;
+  applyAgentTask(task);
+  addTimeline("Plan ready", "ตรวจแผนก่อนอนุมัติ execution", "ok");
+  log(`Agent task created · ${task.id || "unknown id"}`, "ok");
+  els.currentTaskDetail.textContent = "Plan พร้อมแล้ว — ตรวจรายละเอียดก่อนกด Approve & Execute";
+  state.busy = false;
+  applyActionState();
+}
+
+async function approveAgentExecution() {
+  const task = state.agentTask;
+  if (!task?.id || task.status !== "awaiting_approval" || state.busy) return;
+  setAgentError("");
+  state.busy = true;
+  els.taskStatus.textContent = "กำลัง execute";
+  els.taskStatus.className = "pill info";
+  setProgress(2);
+  addTimeline("Execution approved", "กำลังส่งแผนให้ worker แก้ repository", "working");
+  log(`Approve execution · ${task.id}`);
+  applyActionState();
+  try {
+    applyAgentTask(await requestAgent(`/api/agent/tasks/${encodeURIComponent(task.id)}/approve`));
+    log(`Agent execution finished · ${task.id}`, "ok");
+  } catch (error) {
+    setAgentError(agentErrorMessage(error, "อนุมัติ execution ไม่สำเร็จ"));
+    addTimeline("Execution failed", error.message, "bad");
+    log(`Agent approve failed · ${error.message}`, "bad");
+    els.currentTaskDetail.textContent = error.message;
+    els.taskStatus.textContent = "Agent error";
+    els.taskStatus.className = "pill bad";
+  } finally {
+    state.busy = false;
+    applyActionState();
+  }
+}
+
+async function verifyAgentTask() {
+  const task = state.agentTask;
+  if (!task?.id || task.status !== "awaiting_verification" || state.busy) return;
+  setAgentError("");
+  state.busy = true;
+  els.taskStatus.textContent = "กำลัง verify";
+  els.taskStatus.className = "pill info";
+  setProgress(3);
+  els.gateBadge.textContent = "VERIFYING";
+  els.gateBadge.className = "gateBadge waiting";
+  els.gateMessage.textContent = "กำลังตรวจ evidence จาก Backend";
+  addTimeline("Verification started", "ตรวจ build, tests และหลักฐานที่ Backend รายงาน", "working");
+  log(`Run verification · ${task.id}`);
+  applyActionState();
+  try {
+    const result = await requestAgent(`/api/agent/tasks/${encodeURIComponent(task.id)}/verify`);
+    applyAgentTask(result);
+    if (result.status === "completed" && result.verification?.ok === true) {
+      incrementCompletedTask();
+      stopTimer();
+      addTimeline("Verification passed", "งานนี้ผ่าน gate และถือว่า DONE", "ok");
+      log(`Verification passed · ${task.id}`, "ok");
+    } else {
+      addTimeline("Verification failed", result.verification?.error || "หลักฐานยังไม่ผ่านครบ", "bad");
+      log(`Verification failed · ${task.id}`, "bad");
+    }
+  } catch (error) {
+    setAgentError(agentErrorMessage(error, "Verification ไม่สำเร็จ"));
+    addTimeline("Verification failed", error.message, "bad");
+    log(`Agent verify failed · ${error.message}`, "bad");
+    els.gateBadge.textContent = "FAILED";
+    els.gateBadge.className = "gateBadge fail";
+    els.gateMessage.textContent = "ตรวจ Verification ไม่สำเร็จ — งานยังไม่ถือว่า DONE";
+    els.taskStatus.textContent = "Verification error";
+    els.taskStatus.className = "pill bad";
+  } finally {
+    state.busy = false;
+    applyActionState();
+  }
+}
+
+function agentErrorMessage(error, fallback) {
+  if (error?.code === "agent_api_unavailable") return "Backend นี้ยังไม่มี Agent API จึงยังสร้าง/ควบคุมงานแบบ supervised agent ไม่ได้ · ใช้ Plan/Ask ได้ หรืออัปเดต Backend ให้รองรับ /api/agent/tasks";
+  return `${fallback}: ${error?.message || "ไม่ทราบสาเหตุ"}`;
+}
 function showPlan(plan) { els.planEmpty.classList.add("hidden"); els.planBox.classList.remove("hidden"); els.planBox.textContent = typeof plan === "string" ? plan : JSON.stringify(plan, null, 2); selectTab("plan"); }
 function selectTab(name) { $$(".tabBtn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name)); $$(".tabPanel").forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${name}`)); document.querySelector("#workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
 
@@ -377,8 +627,32 @@ async function callChat(goal, review = false) { els.activeAgent.textContent = "O
 async function callOmp(goal) { if (!state.ompEnabled) throw new Error("OMP ยังไม่ได้เปิดบน Backend"); els.activeAgent.textContent = "OMP"; setProgress(2); addTimeline("Executing", "OMP กำลังทำงานกับ repository", "working"); log("Send task to OMP RPC"); const data = await request("/api/omp/prompt", { prompt: goal }, 190000); if (data.content) showPlan(data.content); addTimeline("OMP finished", data.content ? "Worker returned a result" : "agent_end", "ok"); log("OMP agent_end", "ok"); applyVerificationEvidence(data); return data; }
 function applyVerificationEvidence(data) { if (!data || !data.verification) return; const entries = $$("#verificationList > div"); const order = ["build","unit","integration","browser","ecc","security","harpoon","regression"]; let passed = 0; order.forEach((key, i) => { const value = data.verification[key]; if (value == null || !entries[i]) return; const dot = entries[i].querySelector(".checkDot"); const label = entries[i].querySelector("em"); const ok = value === true || value === "pass" || value?.status === "pass"; dot.textContent = ok ? "✓" : "×"; dot.className = `checkDot ${ok ? "pass" : "fail"}`; label.textContent = ok ? "Passed" : "Failed"; if (ok) passed++; }); if (passed === order.length) { els.gateBadge.textContent = "READY"; els.gateBadge.className = "gateBadge pass"; els.gateMessage.textContent = "Verification Gate ผ่านครบ พร้อมสำหรับการอนุมัติ"; } }
 
-async function runTask() { const goal = els.input.value.trim(); const mode = els.mode.value; if (!goal || els.run.disabled) return; makeTask(goal, mode); setBusy(true, "กำลังทำงาน"); try { if (mode === "plan") { await callPlan(goal); finishTask("แผนพร้อมแล้ว ยังไม่มีการแก้ repository", true); return; } if (mode === "ask") { await callChat(goal, false); finishTask("OpenTyphoon วิเคราะห์งานเสร็จแล้ว", true); return; } if (mode === "review") { await callChat(goal, true); finishTask("Review พร้อมแล้ว ตรวจรายละเอียดใน Workspace", true); return; } if (mode === "execute") { await callOmp(goal); finishTask("OMP ส่งผลลัพธ์กลับแล้ว รอ Verification", true); return; } await callPlan(goal); if (state.ompEnabled) { await callOmp(goal); finishTask("Auto run เสร็จขั้น Execute แล้ว รอ Verification", true); } else { await callChat(goal, false); finishTask("Auto run ใช้ Typhoon สำเร็จ · OMP ยังปิด", true); } } catch (e) { addTimeline("Task failed", e.message, "bad"); log(`Task failed · ${e.message}`, "bad"); finishTask(e.message, false); } }
-function resetTask() { stopTimer(); state.taskId = null; state.taskStart = null; els.currentTaskId.textContent = "NO TASK"; els.currentTaskGoal.textContent = "ยังไม่มีงานที่กำลังทำ"; els.currentTaskDetail.textContent = "พิมพ์เป้าหมายด้านบนแล้วกด Run Task"; els.activeAgent.textContent = "Idle"; els.activeModel.textContent = "—"; els.activeMode.textContent = "—"; els.elapsedTime.textContent = "—"; $$("#progressSteps .progressStep").forEach((s) => s.classList.remove("done", "active", "failed")); els.gateBadge.textContent = "WAITING"; els.gateBadge.className = "gateBadge waiting"; els.gateMessage.textContent = "เริ่ม Verification หลังมี Task run จริง"; }
+async function runTask() {
+  const goal = els.input.value.trim();
+  const mode = els.mode.value;
+  if (!goal || els.run.disabled) return;
+  makeTask(goal, mode);
+  setBusy(true, mode === "agent" ? "กำลังวางแผน Agent" : "กำลังทำงาน");
+  try {
+    if (mode === "agent") {
+      await createAgentTask(goal);
+      return;
+    }
+    if (mode === "plan") { await callPlan(goal); finishTask("แผนพร้อมแล้ว — ยังไม่ถือว่า DONE จนกว่าจะผ่าน Verification", true); return; }
+    if (mode === "ask") { await callChat(goal, false); finishTask("OpenTyphoon วิเคราะห์งานเสร็จแล้ว — รอ Verification", true); return; }
+    if (mode === "review") { await callChat(goal, true); finishTask("Review พร้อมแล้ว — รอ Verification", true); return; }
+    if (mode === "execute") { await callOmp(goal); finishTask("OMP ส่งผลลัพธ์กลับแล้ว — รอ Verification", true); return; }
+    await callPlan(goal);
+    if (state.ompEnabled) { await callOmp(goal); finishTask("Auto run เสร็จขั้น Execute แล้ว — รอ Verification", true); }
+    else { await callChat(goal, false); finishTask("Auto run ใช้ Typhoon สำเร็จ · OMP ยังปิด — รอ Verification", true); }
+  } catch (e) {
+    setAgentError(mode === "agent" ? agentErrorMessage(e, "สร้าง Agent task ไม่สำเร็จ") : "");
+    addTimeline("Task failed", e.message, "bad");
+    log(`Task failed · ${e.message}`, "bad");
+    finishTask(e.message, false);
+  }
+}
+function resetTask() { stopTimer(); state.taskId = null; state.taskStart = null; state.agentTask = null; setAgentError(""); els.currentTaskId.textContent = "NO TASK"; els.currentTaskGoal.textContent = "ยังไม่มีงานที่กำลังทำ"; els.currentTaskDetail.textContent = "พิมพ์เป้าหมายด้านบนแล้วกด Run Task"; els.activeAgent.textContent = "Idle"; els.activeModel.textContent = "—"; els.activeMode.textContent = "—"; els.elapsedTime.textContent = "—"; $$("#progressSteps .progressStep").forEach((s) => s.classList.remove("done", "active", "failed")); els.gateBadge.textContent = "WAITING"; els.gateBadge.className = "gateBadge waiting"; els.gateMessage.textContent = "เริ่ม Verification หลังมี Task run จริง"; updateAgentActions(); }
 
 els.save.addEventListener("click", () => { state.apiBase = els.apiBase.value.trim(); localStorage.setItem("webai.apiBase", state.apiBase); if (!normalizedBase()) { setConnectionWaiting(); return; } if (!/^https?:\/\//i.test(normalizedBase())) { setConnectionFailed("URL ต้องขึ้นต้นด้วย https:// หรือ http://"); return; } log("Save Backend URL · start health check"); health(); });
 els.systemButton.addEventListener("click", openDrawer); els.settingsBtn.addEventListener("click", openDrawer); els.openConnection.addEventListener("click", openDrawer); els.mobileMoreBtn.addEventListener("click", openDrawer); els.closeDrawer.addEventListener("click", closeDrawer); els.drawer.addEventListener("click", (e) => { if (e.target === els.drawer) closeDrawer(); });
@@ -386,7 +660,7 @@ els.commandBtn.addEventListener("click", openPalette); els.palette.addEventListe
 document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); } if (e.key === "Escape") { closeDrawer(); closePalette(); } if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !els.run.disabled) runTask(); });
 $$('[data-command]').forEach((btn) => btn.addEventListener("click", () => { const cmd = btn.dataset.command; closePalette(); if (cmd === "new-task") { document.querySelector("#home")?.scrollIntoView({ behavior: "smooth" }); setTimeout(() => els.input.focus(), 250); } if (cmd === "connect") openDrawer(); if (cmd === "workspace") document.querySelector("#workspace")?.scrollIntoView({ behavior: "smooth" }); if (cmd === "roadmap") location.href = "./roadmap.html"; }));
 $$('.promptChip').forEach((btn) => btn.addEventListener("click", () => { els.input.value = btn.dataset.prompt || ""; els.input.focus(); applyActionState(); }));
-els.input.addEventListener("input", applyActionState); els.mode.addEventListener("change", applyActionState); els.run.addEventListener("click", runTask); els.clearTask.addEventListener("click", resetTask); els.clearTimeline.addEventListener("click", () => { els.timeline.innerHTML = '<div class="emptyState compact"><span>◎</span><b>ยังไม่มีเหตุการณ์</b><small>Timeline จะอัปเดตเมื่อเริ่ม Task</small></div>'; }); els.clearLog.addEventListener("click", () => { els.log.innerHTML = '<div class="emptyLog">ยังไม่มี event · ระบบจะแสดง metadata โดยไม่ log secret</div>'; });
+els.input.addEventListener("input", applyActionState); els.mode.addEventListener("change", applyActionState); els.run.addEventListener("click", runTask); els.approveExecution.addEventListener("click", approveAgentExecution); els.verifyTask.addEventListener("click", verifyAgentTask); els.clearTask.addEventListener("click", resetTask); els.clearTimeline.addEventListener("click", () => { els.timeline.innerHTML = '<div class="emptyState compact"><span>◎</span><b>ยังไม่มีเหตุการณ์</b><small>Timeline จะอัปเดตเมื่อเริ่ม Task</small></div>'; }); els.clearLog.addEventListener("click", () => { els.log.innerHTML = '<div class="emptyLog">ยังไม่มี event · ระบบจะแสดง metadata โดยไม่ log secret</div>'; });
 $$('.tabBtn').forEach((btn) => btn.addEventListener("click", () => selectTab(btn.dataset.tab)));
 $$('.deviceSwitch button').forEach((btn) => btn.addEventListener("click", () => { $$('.deviceSwitch button').forEach((b) => b.classList.toggle("active", b === btn)); }));
 if (normalizedBase()) health(); else setConnectionWaiting();
