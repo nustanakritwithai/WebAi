@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createAgentService } from "../server/agent.mjs";
 import { createNativeWorker } from "../server/native-worker.mjs";
 
 function harness(manifestFactory) {
@@ -107,6 +108,60 @@ async function testNoOutsideFileCreated() {
   }
 }
 
+async function testSupervisedCoreUsesNativeWorker() {
+  const directory = mkdtempSync(join(tmpdir(), "webai-native-agent-"));
+  mkdirSync(join(directory, "src"), { recursive: true });
+  writeFileSync(join(directory, "src", "app.js"), "export const value = 1;\n");
+
+  const previousEnabled = process.env.WEBAI_NATIVE_WORKER_ENABLED;
+  const previousWorkspace = process.env.WEBAI_WORKSPACE;
+  process.env.WEBAI_NATIVE_WORKER_ENABLED = "true";
+  process.env.WEBAI_WORKSPACE = directory;
+  let fallbackCalls = 0;
+
+  try {
+    const service = createAgentService({
+      requestModel: async (request) => {
+        const system = request?.messages?.[0]?.content || "";
+        if (system.includes("planner")) {
+          return { choices: [{ message: { content: JSON.stringify({
+            summary: "Update value.",
+            steps: [{ title: "Update src/app.js", acceptance: "value becomes 2" }],
+            risks: [],
+          }) } }] };
+        }
+        return { choices: [{ message: { content: JSON.stringify({
+          summary: "Updated value with native worker.",
+          files: [{ path: "src/app.js", content: "export const value = 2;\n" }],
+        }) } }] };
+      },
+      runWorker: async () => {
+        fallbackCalls += 1;
+        throw new Error("legacy worker must not run");
+      },
+      runVerification: async () => ({ ok: true, command: "fixture verify", exitCode: 0 }),
+    });
+
+    assert.equal(service.status().nativeWorkerEnabled, true);
+    assert.equal(service.status().worker, "webai-native-v0.1");
+    const created = await service.createTask({ goal: "Set the value to two." });
+    const executed = await service.approveAndExecute(created.id);
+    assert.equal(executed.status, "awaiting_verification");
+    assert.equal(executed.worker.worker, "webai-native-v0.1");
+    assert.equal(executed.worker.changedFiles.length, 1);
+    assert.equal(fallbackCalls, 0, "legacy worker must not be called when native worker is enabled");
+    assert.equal(readFileSync(join(directory, "src", "app.js"), "utf8"), "export const value = 2;\n");
+    const completed = await service.verify(created.id);
+    assert.equal(completed.status, "completed");
+  } finally {
+    if (previousEnabled === undefined) delete process.env.WEBAI_NATIVE_WORKER_ENABLED;
+    else process.env.WEBAI_NATIVE_WORKER_ENABLED = previousEnabled;
+    if (previousWorkspace === undefined) delete process.env.WEBAI_WORKSPACE;
+    else process.env.WEBAI_WORKSPACE = previousWorkspace;
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 await testWritesAndContextBoundary();
 await testTraversalDenied();
 await testSecretPathDenied();
@@ -114,5 +169,6 @@ await testGithubWorkflowDenied();
 await testManifestLimits();
 await testMalformedManifest();
 await testNoOutsideFileCreated();
+await testSupervisedCoreUsesNativeWorker();
 
-console.log("NATIVE WORKER SMOKE PASS: writes, context boundary, traversal, secret paths, workflow paths, manifest limits");
+console.log("NATIVE WORKER SMOKE PASS: writes, context boundary, traversal, secret paths, workflow paths, limits, supervised native selection");
