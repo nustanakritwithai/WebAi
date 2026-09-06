@@ -22,5 +22,13 @@ jobs:
           node --check app.js
           node --check app-core.js
           node --check capability-bridge.js
+          node --check browser-linux-worker.js
+          node --check coi-sw.js
+      - name: Browser worker contract
+        run: |
+          grep -q 'executionTarget = "browser"' app.js
+          grep -q 'BrowserPod.boot' browser-linux-worker.js
+          grep -q 'Cross-Origin-Embedder-Policy' coi-sw.js
+          grep -q 'Browser Linux Worker' browser-linux-worker.js
       - name: API smoke test
         run: npm run smoke
