@@ -209,11 +209,17 @@ async function requestModel(chat) {
 function runVerification() {
   if (!WORKSPACE || !existsSync(WORKSPACE)) throw Object.assign(new Error("workspace_not_configured"), { status: 503 });
   return new Promise((resolveResult, reject) => {
-    const command = process.platform === "win32" ? "npm.cmd" : "npm";
-    const child = spawn(command, ["test"], {
+    const command = process.platform === "win32"
+      ? (process.env.ComSpec || process.env.COMSPEC || "cmd.exe")
+      : "npm";
+    const args = process.platform === "win32"
+      ? ["/d", "/s", "/c", "npm.cmd test"]
+      : ["test"];
+    const child = spawn(command, args, {
       cwd: WORKSPACE,
       env: safeChildEnvironment(),
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     let output = "";
     let settled = false;
