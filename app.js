@@ -1,9 +1,11 @@
 (() => {
   document.documentElement.dataset.executionTarget = "browser-agent";
 
+  const assetVersion = new URL(document.currentScript?.src || location.href, location.href).searchParams.get("v") || "dev";
+
   const load = (src, done) => {
     const script = document.createElement("script");
-    script.src = src;
+    script.src = `${src}?v=${encodeURIComponent(assetVersion)}`;
     script.async = false;
     if (done) script.onload = done;
     document.head.appendChild(script);
