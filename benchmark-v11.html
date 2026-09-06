@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07101f">
+  <meta name="description" content="WebAi Capability Benchmark CB-1.1 — reasoning and planning isolated from protocol failures">
+  <title>WebAi · Capability Benchmark CB-1.1</title>
+  <link rel="stylesheet" href="./reasoning.css">
+  <style>
+    .scoreGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:20px 0}.scoreCard{background:#0c1729;border:1px solid var(--line);border-radius:16px;padding:16px}.scoreCard small{color:var(--muted);display:block}.scoreCard b{font-size:30px}.categoryGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}.bar{height:8px;background:#07101f;border-radius:999px;overflow:hidden;margin-top:10px}.bar i{height:100%;display:block;background:linear-gradient(90deg,#6eabff,#756df5)}.toolbar{display:flex;gap:10px;flex-wrap:wrap}.progress{height:10px;background:#07101f;border-radius:999px;overflow:hidden;margin-top:12px}.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#53d6a2,#68a7ff)}.taxonomy{display:flex;gap:8px;flex-wrap:wrap}.tax{border:1px solid var(--line);background:#0b1627;border-radius:999px;padding:6px 10px;font-size:12px}.results{display:grid;gap:8px}.result{border:1px solid var(--line);border-radius:13px;background:#091424}.result summary{display:grid;grid-template-columns:70px 110px 1fr 90px;gap:10px;align-items:center;padding:12px;cursor:pointer}.result summary small{color:var(--muted)}.resultBody{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 12px 12px}.resultBody pre{white-space:pre-wrap;word-break:break-word;background:#06101d;border:1px solid #1c2c45;border-radius:10px;padding:11px;margin:0}.good{color:var(--ok)}.badText{color:var(--bad)}.partial{color:var(--warn)}.history{display:grid;gap:8px}.historyRow{display:grid;grid-template-columns:160px 1fr 80px 150px;gap:10px;padding:11px;border:1px solid var(--line);border-radius:12px;background:#091424}.note{color:var(--muted);font-size:12px}@media(max-width:850px){.scoreGrid{grid-template-columns:1fr 1fr}.categoryGrid{grid-template-columns:1fr}.result summary{grid-template-columns:60px 1fr 70px}.result summary .prompt{grid-column:1/-1}.resultBody{grid-template-columns:1fr}.historyRow{grid-template-columns:1fr 70px}.historyRow small:last-child{grid-column:1/-1}}
+  </style>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="./"><span class="logo">W</span><span><b>WebAi</b><small>CAPABILITY BENCHMARK · CB-1.1</small></span></a>
+  <nav><a href="./">Workspace</a><a href="./reasoning.html">Reasoning</a><a class="active" href="./benchmark-v11.html">CB-1.1</a></nav>
+</header>
+<main class="shell">
+  <section class="hero"><span class="eyebrow">MEASURE THE MODEL, NOT THE FORMATTER</span><h1>Reasoning + Planning Benchmark CB-1.1</h1><p>35 semantic tests: Reasoning 20 ข้อ + Planning 15 ข้อ และ Protocol แยกเป็นคะแนนอีก 10 จุด ระบบพยายามกู้คำตอบจาก response ที่ format ผิดก่อน จึงไม่เอา JSON failure ไปปนกับความสามารถในการคิด</p></section>
+
+  <section class="card connection">
+    <label><span>BACKEND API BASE</span><input id="apiBase" inputmode="url"></label>
+    <button id="connectBtn" class="secondary" type="button">Check connection</button>
+    <div class="status"><i id="connectionDot"></i><b id="connectionLabel">Checking…</b><small id="modelName">OpenTyphoon</small></div>
+  </section>
+
+  <section class="card">
+    <div class="sectionHead"><div><span class="eyebrow">RUN</span><h2>Raw vs Reasoning Engine</h2></div><span id="runState" class="badge">IDLE</span></div>
+    <div class="toolbar"><button id="rawBtn" class="secondary" disabled>Run Raw Baseline</button><button id="engineBtn" class="primary" disabled>Run Reasoning Engine</button><button id="stopBtn" class="secondary" disabled>Stop</button><button id="exportBtn" class="secondary" disabled>Export JSON</button></div>
+    <div class="progress"><i id="progressBar"></i></div><p id="progressText" class="note">35 tests · batch size 4 · Raw 9 calls · Engine 18 calls</p>
+  </section>
+
+  <section class="scoreGrid">
+    <article class="scoreCard"><small>TOTAL / 100</small><b id="totalScore">—</b></article>
+    <article class="scoreCard"><small>REASONING / 50</small><b id="reasoningScore">—</b></article>
+    <article class="scoreCard"><small>PLANNING / 40</small><b id="planningScore">—</b></article>
+    <article class="scoreCard"><small>PROTOCOL / 10</small><b id="protocolScore">—</b></article>
+    <article class="scoreCard"><small>UPLIFT VS RAW</small><b id="upliftScore">—</b></article>
+  </section>
+
+  <section class="categoryGrid">
+    <article class="card"><span class="eyebrow">REASONING</span><h3 id="reasoningPct">—</h3><div class="bar"><i id="reasoningBar"></i></div><small id="reasoningMeta" class="note">20 tests</small></article>
+    <article class="card"><span class="eyebrow">PLANNING</span><h3 id="planningPct">—</h3><div class="bar"><i id="planningBar"></i></div><small id="planningMeta" class="note">15 tests</small></article>
+    <article class="card"><span class="eyebrow">PROTOCOL</span><h3 id="protocolPct">—</h3><div class="bar"><i id="protocolBar"></i></div><small id="protocolMeta" class="note">JSON + ID completeness</small></article>
+  </section>
+
+  <section class="card"><div class="sectionHead"><div><span class="eyebrow">ERROR TAXONOMY</span><h2>ทำไมคะแนนหาย</h2></div></div><div id="taxonomy" class="taxonomy"><span class="note">ยังไม่มีผล</span></div></section>
+
+  <section class="card"><div class="sectionHead"><div><span class="eyebrow">TEST RESULTS</span><h2>รายข้อ</h2></div></div><div id="results" class="results"><div class="empty">รัน benchmark ก่อน</div></div></section>
+  <section class="card"><div class="sectionHead"><div><span class="eyebrow">HISTORY</span><h2>ผลย้อนหลัง</h2></div><button id="clearBtn" class="secondary">Clear</button></div><div id="history" class="history"></div></section>
+</main>
+<script src="./reasoning-engine.js"></script>
+<script src="./benchmark-v11.js"></script>
+</body>
+</html>
