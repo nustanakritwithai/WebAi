@@ -16,7 +16,9 @@
           .catch(() => {})
           .finally(() => {
             load("./browser-linux-worker.js", () => {
-              load("./browser-linux-hotfix.js", () => load("./browser-linux-running-ui-fix.js"));
+              load("./browser-linux-hotfix.js", () => {
+                load("./browser-linux-running-ui-fix.js", () => load("./browser-linux-operation-guard.js"));
+              });
             });
           });
       });
