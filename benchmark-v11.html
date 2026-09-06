@@ -2,55 +2,144 @@
 <html lang="th">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07101f">
-  <meta name="description" content="WebAi Capability Benchmark CB-1.1 — reasoning and planning isolated from protocol failures">
-  <title>WebAi · Capability Benchmark CB-1.1</title>
+  <meta name="description" content="WebAi Capability Lab — Raw vs Reasoning Engine benchmark">
+  <title>WebAi · Capability Lab</title>
   <link rel="stylesheet" href="./reasoning.css">
-  <style>
-    .scoreGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:20px 0}.scoreCard{background:#0c1729;border:1px solid var(--line);border-radius:16px;padding:16px}.scoreCard small{color:var(--muted);display:block}.scoreCard b{font-size:30px}.categoryGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}.bar{height:8px;background:#07101f;border-radius:999px;overflow:hidden;margin-top:10px}.bar i{height:100%;display:block;background:linear-gradient(90deg,#6eabff,#756df5)}.toolbar{display:flex;gap:10px;flex-wrap:wrap}.progress{height:10px;background:#07101f;border-radius:999px;overflow:hidden;margin-top:12px}.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#53d6a2,#68a7ff)}.taxonomy{display:flex;gap:8px;flex-wrap:wrap}.tax{border:1px solid var(--line);background:#0b1627;border-radius:999px;padding:6px 10px;font-size:12px}.results{display:grid;gap:8px}.result{border:1px solid var(--line);border-radius:13px;background:#091424}.result summary{display:grid;grid-template-columns:70px 110px 1fr 90px;gap:10px;align-items:center;padding:12px;cursor:pointer}.result summary small{color:var(--muted)}.resultBody{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 12px 12px}.resultBody pre{white-space:pre-wrap;word-break:break-word;background:#06101d;border:1px solid #1c2c45;border-radius:10px;padding:11px;margin:0}.good{color:var(--ok)}.badText{color:var(--bad)}.partial{color:var(--warn)}.history{display:grid;gap:8px}.historyRow{display:grid;grid-template-columns:160px 1fr 80px 150px;gap:10px;padding:11px;border:1px solid var(--line);border-radius:12px;background:#091424}.note{color:var(--muted);font-size:12px}@media(max-width:850px){.scoreGrid{grid-template-columns:1fr 1fr}.categoryGrid{grid-template-columns:1fr}.result summary{grid-template-columns:60px 1fr 70px}.result summary .prompt{grid-column:1/-1}.resultBody{grid-template-columns:1fr}.historyRow{grid-template-columns:1fr 70px}.historyRow small:last-child{grid-column:1/-1}}
-  </style>
+  <link rel="stylesheet" href="./benchmark-v11.css">
 </head>
-<body>
-<header class="topbar">
-  <a class="brand" href="./"><span class="logo">W</span><span><b>WebAi</b><small>CAPABILITY BENCHMARK · CB-1.1</small></span></a>
-  <nav><a href="./">Workspace</a><a href="./reasoning.html">Reasoning</a><a class="active" href="./benchmark-v11.html">CB-1.1</a></nav>
+<body class="benchmarkPage">
+<header class="topbar labTopbar">
+  <a class="brand" href="./">
+    <span class="logo">W</span>
+    <span><b>WebAi</b><small>CAPABILITY LAB · CB-1.1</small></span>
+  </a>
+  <nav>
+    <a href="./">Workspace</a>
+    <a href="./reasoning.html">Reasoning</a>
+    <a class="active" href="./benchmark-v11.html">Benchmark</a>
+  </nav>
+  <span id="runState" class="runPill">IDLE</span>
 </header>
-<main class="shell">
-  <section class="hero"><span class="eyebrow">MEASURE THE MODEL, NOT THE FORMATTER</span><h1>Reasoning + Planning Benchmark CB-1.1</h1><p>35 semantic tests: Reasoning 20 ข้อ + Planning 15 ข้อ และ Protocol แยกเป็นคะแนนอีก 10 จุด ระบบพยายามกู้คำตอบจาก response ที่ format ผิดก่อน จึงไม่เอา JSON failure ไปปนกับความสามารถในการคิด</p></section>
 
-  <section class="card connection">
-    <label><span>BACKEND API BASE</span><input id="apiBase" inputmode="url"></label>
-    <button id="connectBtn" class="secondary" type="button">Check connection</button>
-    <div class="status"><i id="connectionDot"></i><b id="connectionLabel">Checking…</b><small id="modelName">OpenTyphoon</small></div>
+<main class="shell labShell">
+  <section class="labHero">
+    <div>
+      <span class="eyebrow">SMALL MODEL · MEASURED UPLIFT</span>
+      <h1>AI Capability Lab</h1>
+      <p>เทียบ Typhoon ตัวเดิมแบบ Raw กับ WebAi Reasoning Engine โดยแยกความสามารถจริงออกจากปัญหา JSON / missing answer</p>
+    </div>
+    <div class="heroBadges" aria-label="Benchmark profile">
+      <span>20 Reasoning</span>
+      <span>15 Planning</span>
+      <span>10 Protocol pts</span>
+    </div>
   </section>
 
-  <section class="card">
-    <div class="sectionHead"><div><span class="eyebrow">RUN</span><h2>Raw vs Reasoning Engine</h2></div><span id="runState" class="badge">IDLE</span></div>
-    <div class="toolbar"><button id="rawBtn" class="secondary" disabled>Run Raw Baseline</button><button id="engineBtn" class="primary" disabled>Run Reasoning Engine</button><button id="stopBtn" class="secondary" disabled>Stop</button><button id="exportBtn" class="secondary" disabled>Export JSON</button></div>
-    <div class="progress"><i id="progressBar"></i></div><p id="progressText" class="note">35 tests · batch size 4 · Raw 9 calls · Engine 18 calls</p>
+  <details class="connectionPanel">
+    <summary>
+      <span><i id="connectionDot"></i><b id="connectionLabel">Checking…</b></span>
+      <small id="modelName">OpenTyphoon</small>
+    </summary>
+    <div class="connectionBody">
+      <label><span>BACKEND API BASE</span><input id="apiBase" inputmode="url" autocomplete="url"></label>
+      <button id="connectBtn" class="secondary" type="button">Check connection</button>
+    </div>
+  </details>
+
+  <section class="runPanel">
+    <div class="runPanelHead">
+      <div><span class="eyebrow">RUN BENCHMARK</span><h2>Raw vs Reasoning Engine</h2></div>
+      <div class="runLegend"><span><i class="dot raw"></i>Raw</span><span><i class="dot engine"></i>Engine</span></div>
+    </div>
+
+    <div class="runButtons">
+      <button id="rawBtn" class="runChoice rawChoice" disabled><small>BASELINE</small><b>Run Raw</b><span>9 calls</span></button>
+      <button id="engineBtn" class="runChoice engineChoice" disabled><small>AI CPU</small><b>Run Engine</b><span>18 calls</span></button>
+    </div>
+
+    <div class="runUtilities">
+      <button id="stopBtn" class="secondary" disabled>Stop</button>
+      <button id="exportBtn" class="secondary" disabled>Export JSON</button>
+      <span id="progressText">35 tests · batch size 4</span>
+    </div>
+    <div class="progress"><i id="progressBar"></i></div>
   </section>
 
-  <section class="scoreGrid">
-    <article class="scoreCard"><small>TOTAL / 100</small><b id="totalScore">—</b></article>
-    <article class="scoreCard"><small>REASONING / 50</small><b id="reasoningScore">—</b></article>
-    <article class="scoreCard"><small>PLANNING / 40</small><b id="planningScore">—</b></article>
-    <article class="scoreCard"><small>PROTOCOL / 10</small><b id="protocolScore">—</b></article>
-    <article class="scoreCard"><small>UPLIFT VS RAW</small><b id="upliftScore">—</b></article>
+  <section class="overviewGrid" aria-label="Capability overview">
+    <article class="validatedCard">
+      <div class="scoreRing" id="scoreRing"><div><small>VALIDATED</small><b id="validatedScore">—</b><span>%</span></div></div>
+      <div class="validatedCopy">
+        <span id="dataQualityBadge" class="qualityBadge neutral">NO RESULT</span>
+        <h2>Validated capability</h2>
+        <p id="validatedScope">รัน benchmark เพื่อดูคะแนนที่ตัดหมวดข้อมูลเสียออก</p>
+        <div class="weightedMeta"><span>Raw weighted <b id="totalScore">—</b>/100</span><span>Uplift <b id="upliftScore">—</b></span></div>
+      </div>
+    </article>
+
+    <article class="compareCard">
+      <div class="sectionMiniHead"><div><span class="eyebrow">LATEST COMPARISON</span><h3>Reasoning uplift</h3></div><span id="compareStatus" class="miniBadge">WAITING</span></div>
+      <div class="compareRows">
+        <div><span>Raw</span><b id="rawReasoningSummary">—</b><small>/50</small></div>
+        <div><span>Engine</span><b id="engineReasoningSummary">—</b><small>/50</small></div>
+        <div class="delta"><span>Δ uplift</span><b id="reasoningDeltaSummary">—</b><small>pts</small></div>
+      </div>
+      <p id="compareNote" class="compareNote">ต้องมีอย่างน้อย 1 Raw และ 1 Engine run</p>
+    </article>
   </section>
 
-  <section class="categoryGrid">
-    <article class="card"><span class="eyebrow">REASONING</span><h3 id="reasoningPct">—</h3><div class="bar"><i id="reasoningBar"></i></div><small id="reasoningMeta" class="note">20 tests</small></article>
-    <article class="card"><span class="eyebrow">PLANNING</span><h3 id="planningPct">—</h3><div class="bar"><i id="planningBar"></i></div><small id="planningMeta" class="note">15 tests</small></article>
-    <article class="card"><span class="eyebrow">PROTOCOL</span><h3 id="protocolPct">—</h3><div class="bar"><i id="protocolBar"></i></div><small id="protocolMeta" class="note">JSON + ID completeness</small></article>
+  <section id="qualityBanner" class="qualityBanner" hidden>
+    <div class="qualityIcon">!</div>
+    <div><b id="qualityTitle">Data quality warning</b><p id="qualityText">บางหมวดมีคำตอบหาย จึงไม่ควรตีความเป็นคะแนนความสามารถ</p></div>
   </section>
 
-  <section class="card"><div class="sectionHead"><div><span class="eyebrow">ERROR TAXONOMY</span><h2>ทำไมคะแนนหาย</h2></div></div><div id="taxonomy" class="taxonomy"><span class="note">ยังไม่มีผล</span></div></section>
+  <section class="capabilityGrid">
+    <article class="capabilityCard reasoningCap">
+      <header><div><span class="eyebrow">REASONING</span><h3 id="reasoningPct">—</h3></div><span id="reasoningValidity" class="validityBadge neutral">WAITING</span></header>
+      <div class="capScore"><b id="reasoningScore">—</b><span>/50</span></div><div class="bar"><i id="reasoningBar"></i></div><small id="reasoningMeta">20 tests</small>
+    </article>
+    <article class="capabilityCard planningCap">
+      <header><div><span class="eyebrow">PLANNING</span><h3 id="planningPct">—</h3></div><span id="planningValidity" class="validityBadge neutral">WAITING</span></header>
+      <div class="capScore"><b id="planningScore">—</b><span>/40</span></div><div class="bar"><i id="planningBar"></i></div><small id="planningMeta">15 tests</small>
+    </article>
+    <article class="capabilityCard protocolCap">
+      <header><div><span class="eyebrow">PROTOCOL</span><h3 id="protocolPct">—</h3></div><span id="protocolValidity" class="validityBadge neutral">FORMAT</span></header>
+      <div class="capScore"><b id="protocolScore">—</b><span>/10</span></div><div class="bar"><i id="protocolBar"></i></div><small id="protocolMeta">JSON + ID completeness</small>
+    </article>
+  </section>
 
-  <section class="card"><div class="sectionHead"><div><span class="eyebrow">TEST RESULTS</span><h2>รายข้อ</h2></div></div><div id="results" class="results"><div class="empty">รัน benchmark ก่อน</div></div></section>
-  <section class="card"><div class="sectionHead"><div><span class="eyebrow">HISTORY</span><h2>ผลย้อนหลัง</h2></div><button id="clearBtn" class="secondary">Clear</button></div><div id="history" class="history"></div></section>
+  <section class="insightGrid">
+    <article class="labCard taxonomyCard">
+      <div class="sectionHead compactHead"><div><span class="eyebrow">ERROR TAXONOMY</span><h2>คะแนนหายเพราะอะไร</h2></div></div>
+      <div id="taxonomy" class="taxonomy"><span class="empty">ยังไม่มีผล</span></div>
+    </article>
+    <article class="labCard quickRead">
+      <span class="eyebrow">QUICK READ</span><h2 id="quickReadTitle">ยังไม่มีผลทดสอบ</h2><p id="quickReadText">ระบบจะสรุปให้ว่าอะไรคือความผิดพลาดของโมเดล และอะไรคือปัญหาของ benchmark harness</p>
+    </article>
+  </section>
+
+  <section class="labCard resultsCard">
+    <div class="resultsHead">
+      <div><span class="eyebrow">TEST RESULTS</span><h2>ดูเฉพาะจุดที่ต้องแก้</h2></div>
+      <div class="filterChips" id="resultFilters" role="group" aria-label="Filter test results">
+        <button class="active" data-filter="all" type="button">All</button><button data-filter="failed" type="button">Failed</button><button data-filter="missing" type="button">Missing</button><button data-filter="reasoning" type="button">Reasoning</button><button data-filter="planning" type="button">Planning</button>
+      </div>
+    </div>
+    <div id="resultCount" class="resultCount">0 results</div>
+    <div id="results" class="results"><div class="empty">รัน benchmark ก่อน</div></div>
+  </section>
+
+  <section class="labCard historyCard">
+    <div class="sectionHead compactHead"><div><span class="eyebrow">HISTORY</span><h2>ผลย้อนหลัง</h2></div><button id="clearBtn" class="secondary">Clear</button></div>
+    <div id="history" class="history"></div>
+  </section>
 </main>
+
+<nav class="mobileLabNav" aria-label="Mobile lab navigation"><a href="./">Workspace</a><a href="./reasoning.html">Reasoning</a><a class="active" href="./benchmark-v11.html">Benchmark</a></nav>
+
 <script src="./reasoning-engine.js"></script>
 <script src="./benchmark-v11.js"></script>
+<script src="./benchmark-v11-ui.js"></script>
 </body>
 </html>
