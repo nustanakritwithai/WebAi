@@ -169,7 +169,7 @@ export function createAgentService({
     ? createNativeWorker({ workspace: process.env.WEBAI_WORKSPACE || "", requestModel })
     : null;
   const executeWorker = nativeWorker ? nativeWorker.run : runWorker;
-  const workerName = nativeWorker ? "webai-native-v0.1" : "legacy-worker";
+  const workerName = nativeWorker ? "webai-omp-runtime-v0.2" : "legacy-worker";
 
   async function runLocked(operation) {
     return typeof withWorkspaceLock === "function" ? withWorkspaceLock(operation) : operation();

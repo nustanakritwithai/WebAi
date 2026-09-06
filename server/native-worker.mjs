@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 
@@ -69,6 +69,10 @@ function redactText(value) {
     .replace(/(authorization\s*:\s*bearer\s+)[A-Za-z0-9._~+\/-]{12,}/gi, "$1[REDACTED]");
 }
 
+function sha256(content) {
+  return createHash("sha256").update(content).digest("hex");
+}
+
 function goalTokens(goal) {
   return new Set((String(goal).toLowerCase().match(/[\p{L}\p{N}_-]{2,}/gu) || []).slice(0, 80));
 }
@@ -133,6 +137,7 @@ async function collectContext(root, goal) {
     .slice(0, MAX_CONTEXT_FILES);
 
   const sections = [];
+  const anchors = {};
   let used = 0;
   for (const rel of selected) {
     if (used >= MAX_CONTEXT_CHARS) break;
@@ -140,7 +145,9 @@ async function collectContext(root, goal) {
       const raw = await readFile(resolve(root, rel), "utf8");
       const remaining = MAX_CONTEXT_CHARS - used;
       const content = redactText(raw).slice(0, Math.max(0, remaining));
-      sections.push(`--- FILE: ${rel} ---\n${content}`);
+      const anchor = sha256(raw);
+      anchors[rel] = anchor;
+      sections.push(`--- FILE: ${rel} | SHA256: ${anchor} ---\n${content}`);
       used += content.length;
     } catch {
       // A transient unreadable file should not abort context collection.
@@ -150,6 +157,7 @@ async function collectContext(root, goal) {
   return {
     tree: files.slice(0, MAX_TREE_FILES),
     text: sections.join("\n\n"),
+    anchors,
   };
 }
 
@@ -185,7 +193,11 @@ function parseManifest(raw) {
     if (bytes > MAX_WRITE_FILE_BYTES) throw httpError("native_file_too_large", 422);
     totalBytes += bytes;
     if (totalBytes > MAX_WRITE_TOTAL_BYTES) throw httpError("native_manifest_too_large", 422);
-    return { path, content: item.content, bytes };
+    const expectedSha256 = item.expectedSha256;
+    if (expectedSha256 !== undefined && expectedSha256 !== null && (typeof expectedSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(expectedSha256))) {
+      throw httpError("native_manifest_invalid_anchor", 502);
+    }
+    return { path, content: item.content, bytes, ...(expectedSha256 === undefined ? {} : { expectedSha256: expectedSha256?.toLowerCase() ?? null }) };
   });
 
   return {
@@ -199,6 +211,27 @@ function targetPath(root, relativePath) {
   const rel = relative(root, target);
   if (!rel || rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) throw httpError("native_path_escape", 403);
   return target;
+}
+
+async function bindManifestAnchors(root, manifest, anchors) {
+  const files = [];
+  for (const file of manifest.files) {
+    const target = targetPath(root, file.path);
+    await assertNoSymlinks(root, file.path);
+    let exists = true;
+    try {
+      await readFile(target);
+    } catch (error) {
+      if (error?.code === "ENOENT") exists = false;
+      else throw error;
+    }
+    const issuedAnchor = anchors?.[file.path];
+    if (exists && !issuedAnchor) throw httpError("native_unanchored_existing_file", 422);
+    if (!exists && file.expectedSha256 !== undefined && file.expectedSha256 !== null) throw httpError("native_anchor_mismatch", 409);
+    if (exists && file.expectedSha256 !== undefined && file.expectedSha256 !== issuedAnchor) throw httpError("native_anchor_mismatch", 409);
+    files.push({ ...file, expectedSha256: exists ? issuedAnchor : null });
+  }
+  return { ...manifest, files };
 }
 
 async function assertNoSymlinks(root, relativePath) {
@@ -238,6 +271,9 @@ async function applyManifest(root, manifest) {
     } catch (error) {
       if (error?.code === "ENOENT") existed = false;
       else throw error;
+    }
+    if (file.expectedSha256 !== null && sha256(previous) !== file.expectedSha256) {
+      throw httpError("native_stale_file", 409);
     }
     changes.push({ ...file, target, previous, existed });
   }
@@ -281,7 +317,7 @@ export function createNativeWorker({ workspace, requestModel }) {
       messages: [
         {
           role: "system",
-          content: "You are WebAi Native Worker V0.1. Return only JSON: {summary:string,files:[{path:string,content:string}]}. You may create or replace text source files only. Never write hidden files, credentials, .env, .git, .github, node_modules, certificates, or key files. Never request shell commands or deletions. Use the supplied workspace context and make the smallest coherent change that satisfies the approved task.",
+          content: "You are WebAi OMP-inspired Runtime V0.2. Return only JSON: {summary:string,files:[{path:string,content:string,expectedSha256?:string|null}]}. You may create or replace text source files only. Existing files must be selected workspace files and are bound by their server-issued SHA256 anchor; copy that anchor into expectedSha256 when supplied. Never write hidden files, credentials, .env, .git, .github, node_modules, certificates, or key files. Never request shell commands or deletions. Use the supplied workspace context and make the smallest coherent change that satisfies the approved task.",
         },
         {
           role: "user",
@@ -294,7 +330,7 @@ export function createNativeWorker({ workspace, requestModel }) {
 
     return {
       root,
-      manifest: parseManifest(response?.choices?.[0]?.message?.content),
+      manifest: await bindManifestAnchors(root, parseManifest(response?.choices?.[0]?.message?.content), context.anchors),
     };
   }
 
@@ -305,7 +341,7 @@ export function createNativeWorker({ workspace, requestModel }) {
     const changedFiles = await applyManifest(prepared.root, prepared.manifest);
     return {
       ok: true,
-      worker: "webai-native-v0.1",
+      worker: "webai-omp-runtime-v0.2",
       content: prepared.manifest.summary,
       changedFiles,
     };

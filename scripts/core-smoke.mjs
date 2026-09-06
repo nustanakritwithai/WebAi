@@ -25,7 +25,7 @@ const fakeProxy = http.createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   const system = body?.messages?.[0]?.content || "";
-  const content = system.includes("Native Worker")
+  const content = system.includes("OMP-inspired Runtime")
     ? JSON.stringify({ summary: "Update fixture", files: [{ path: "src/app.js", content: "export const value = 'new';\n" }] })
     : JSON.stringify({ summary: "Plan fixture update", steps: [{ title: "Update src/app.js", acceptance: "value becomes new" }], risks: [] });
   res.writeHead(200, { "Content-Type": "application/json" });

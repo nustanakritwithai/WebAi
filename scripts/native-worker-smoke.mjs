@@ -33,7 +33,7 @@ async function testWritesAndContextBoundary() {
   });
   try {
     const result = await h.worker.run("Change the greeting and add a helper.");
-    assert.equal(result.worker, "webai-native-v0.1");
+    assert.equal(result.worker, "webai-omp-runtime-v0.2");
     assert.equal(result.changedFiles.length, 2);
     assert.equal(readFileSync(join(h.directory, "src", "app.js"), "utf8"), "export const greeting = 'new';\n");
     assert.equal(readFileSync(join(h.directory, "src", "helper.js"), "utf8"), "export const helper = true;\n");
@@ -108,6 +108,18 @@ async function testNoOutsideFileCreated() {
   }
 }
 
+async function testStaleAnchorRejected() {
+  const h = harness({ summary: "Update safely.", files: [{ path: "src/app.js", content: "export const greeting = 'new';\n" }] });
+  try {
+    const prepared = await h.worker.prepare("Change the greeting.");
+    writeFileSync(join(h.directory, "src", "app.js"), "export const greeting = 'external-drift';\n");
+    await assert.rejects(() => h.worker.apply(prepared), (error) => error?.status === 409 && error?.message === "native_stale_file");
+    assert.equal(readFileSync(join(h.directory, "src", "app.js"), "utf8"), "export const greeting = 'external-drift';\n");
+  } finally {
+    h.cleanup();
+  }
+}
+
 async function testSupervisedCoreUsesNativeWorker() {
   const directory = mkdtempSync(join(tmpdir(), "webai-native-agent-"));
   mkdirSync(join(directory, "src"), { recursive: true });
@@ -143,11 +155,11 @@ async function testSupervisedCoreUsesNativeWorker() {
     });
 
     assert.equal(service.status().nativeWorkerEnabled, true);
-    assert.equal(service.status().worker, "webai-native-v0.1");
+    assert.equal(service.status().worker, "webai-omp-runtime-v0.2");
     const created = await service.createTask({ goal: "Set the value to two." });
     const executed = await service.approveAndExecute(created.id);
     assert.equal(executed.status, "awaiting_verification");
-    assert.equal(executed.worker.worker, "webai-native-v0.1");
+    assert.equal(executed.worker.worker, "webai-omp-runtime-v0.2");
     assert.equal(executed.worker.changedFiles.length, 1);
     assert.equal(fallbackCalls, 0, "legacy worker must not be called when native worker is enabled");
     assert.equal(readFileSync(join(directory, "src", "app.js"), "utf8"), "export const value = 2;\n");
@@ -169,6 +181,7 @@ await testGithubWorkflowDenied();
 await testManifestLimits();
 await testMalformedManifest();
 await testNoOutsideFileCreated();
+await testStaleAnchorRejected();
 await testSupervisedCoreUsesNativeWorker();
 
-console.log("NATIVE WORKER SMOKE PASS: writes, context boundary, traversal, secret paths, workflow paths, limits, supervised native selection");
+console.log("OMP RUNTIME SMOKE PASS: writes, server-issued hash anchors, stale-write rejection, context boundary, path guards, limits, and supervised execution");
