@@ -1,6 +1,4 @@
 (() => {
-  const browserExecution = document.documentElement.dataset.executionTarget === "browser";
-
   function findTeam(name) {
     return [...document.querySelectorAll(".teamGrid > div")]
       .find((row) => row.querySelector("b")?.textContent?.trim().toLowerCase() === name.toLowerCase());
@@ -45,7 +43,7 @@
         };
       }
     } catch {
-      // Old core builds may not expose headers as a mutable global binding.
+      // Older core builds may not expose headers as a mutable global binding.
     }
   }
 
@@ -60,7 +58,7 @@
     if (!label) {
       label = document.createElement("label");
       label.id = "envSessionTokenLabel";
-      label.innerHTML = 'Session token <em>optional</em><input id="envSessionToken" type="password" autocomplete="off" placeholder="WEB_AUTH_TOKEN"><small>ใช้เมื่อ VPS เปิด WEB_AUTH_TOKEN</small>';
+      label.innerHTML = 'Session token <em>optional</em><input id="envSessionToken" type="password" autocomplete="off" placeholder="WEB_AUTH_TOKEN"><small>ใช้เมื่อ Backend เปิด WEB_AUTH_TOKEN</small>';
       const save = document.querySelector("#saveConfig");
       form.insertBefore(label, save || null);
       document.querySelector("#envSessionToken")?.addEventListener("input", (event) => {
@@ -71,55 +69,38 @@
     if (input) input.value = localStorage.getItem("webai.sessionToken") || "";
   }
 
-  function syncCoreState(data, ompReady) {
+  function syncCoreState(data) {
     try {
       if (typeof state !== "undefined") {
         state.typhoonConfigured = !!(data?.capabilities?.typhoon?.configured ?? data?.keyConfigured ?? data?.typhoonConfigured);
-        state.ompEnabled = ompReady;
+        state.ompEnabled = false;
+        if (data?.capabilities?.webaiCore?.enabled === true) state.agentAvailable = true;
       }
       if (typeof applyActionState === "function") applyActionState();
     } catch {
-      // UI status still updates even if an older core hides its state binding.
+      // Capability UI still updates if a core binding is private.
     }
   }
 
-  function paintBrowserOmpWaiting() {
-    const ompDot = document.querySelector("#ompStatusDot");
-    const ompState = document.querySelector("#ompState");
-    const teamOmp = document.querySelector("#teamOmp");
-    const teamOmpText = document.querySelector("#teamOmpText");
-    if (ompDot) ompDot.className = "tinyDot idle";
-    if (ompState) ompState.textContent = "Browser Worker";
-    if (teamOmp) teamOmp.className = "tinyDot idle";
-    if (teamOmpText) teamOmpText.textContent = "Browser-owned";
+  function hideOmpLegacyUi() {
+    document.querySelector("#ompStatusDot")?.closest(".overviewItem")?.setAttribute("hidden", "");
+    document.querySelector("#teamOmp")?.closest("div")?.setAttribute("hidden", "");
   }
 
   function applyCapabilities(data) {
     const caps = data?.capabilities || {};
-    const serverOmpReady = !!(caps.omp?.enabled && caps.omp?.configured);
-    const ompReady = browserExecution ? false : serverOmpReady;
-    syncCoreState(data, ompReady);
+    syncCoreState(data);
+    hideOmpLegacyUi();
 
-    if (browserExecution) {
-      paintBrowserOmpWaiting();
-    } else {
-      const ompDot = document.querySelector("#ompStatusDot");
-      const ompState = document.querySelector("#ompState");
-      if (ompDot) ompDot.className = `tinyDot ${ompReady ? "ok" : caps.omp?.enabled ? "warn" : "idle"}`;
-      if (ompState) ompState.textContent = ompReady ? "พร้อม" : caps.omp?.enabled ? "รอ ENV" : "ยังปิด";
-      const teamOmp = document.querySelector("#teamOmp");
-      const teamOmpText = document.querySelector("#teamOmpText");
-      if (teamOmp) teamOmp.className = `tinyDot ${ompReady ? "ok" : caps.omp?.enabled ? "warn" : "idle"}`;
-      if (teamOmpText) teamOmpText.textContent = ompReady ? "Configured" : caps.omp?.enabled ? "Needs ENV" : "Disabled";
-    }
-
+    paintTeam("WebAi Core", caps.webaiCore, "Ready");
+    paintTeam("Native Worker", caps.nativeWorker, "Workspace ready");
     paintTeam("ECC", caps.ecc);
     paintTeam("Hermes", caps.hermes);
     paintTeam("OpenClaw", caps.openclaw);
     paintTeam("Harpoon", caps.harpoon);
 
     const previewStatus = document.querySelector("#previewStatus");
-    if (previewStatus && caps.preview && !browserExecution) {
+    if (previewStatus && caps.preview) {
       previewStatus.textContent = caps.preview.enabled
         ? (caps.preview.configured ? "Preview channel configured" : "Preview เปิดแล้ว · รอ ENV")
         : "Preview channel disabled";
@@ -128,7 +109,9 @@
     installOptionalTokenInput(!!data?.authEnabled);
     installHeaderBridge();
     document.documentElement.dataset.envCapabilities = "loaded";
-    document.documentElement.dataset.omp = browserExecution ? "browser" : (ompReady ? "ready" : caps.omp?.enabled ? "needs-env" : "disabled");
+    document.documentElement.dataset.nativeWorker = caps.nativeWorker?.configured
+      ? "ready"
+      : caps.nativeWorker?.enabled ? "needs-workspace" : "disabled";
   }
 
   async function refreshCapabilities() {
@@ -145,21 +128,6 @@
       // Core app owns connection-error UX.
     }
   }
-
-  window.addEventListener("webai:browser-worker-status", (event) => {
-    if (!browserExecution) return;
-    const detail = event.detail || {};
-    const ompDot = document.querySelector("#ompStatusDot");
-    const ompState = document.querySelector("#ompState");
-    const teamOmp = document.querySelector("#teamOmp");
-    const teamOmpText = document.querySelector("#teamOmpText");
-    const kind = detail.ompReady ? "ok" : detail.linuxReady ? "warn" : "idle";
-    if (ompDot) ompDot.className = `tinyDot ${kind}`;
-    if (ompState) ompState.textContent = detail.ompReady ? "พร้อมใน Browser" : detail.linuxReady ? "รอ Browser build" : "Browser Worker";
-    if (teamOmp) teamOmp.className = `tinyDot ${kind}`;
-    if (teamOmpText) teamOmpText.textContent = detail.ompReady ? "Browser ready" : detail.linuxReady ? "Compatibility pending" : "Browser-owned";
-    document.documentElement.dataset.omp = detail.ompReady ? "browser-ready" : "browser-pending";
-  });
 
   window.WebAiCapabilities = { refresh: refreshCapabilities, apply: applyCapabilities };
   installHeaderBridge();

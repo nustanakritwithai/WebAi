@@ -13,7 +13,6 @@ const MAX_MESSAGES = 40;
 const MAX_CONTENT_CHARS = 12_000;
 const REQUESTS_PER_MINUTE = 30;
 const UPSTREAM_TIMEOUT_MS = 60_000;
-const OMP_TIMEOUT_MS = 180_000;
 const VERIFICATION_TIMEOUT_MS = 180_000;
 const VERIFICATION_OUTPUT_CHARS = 12_000;
 const buckets = new Map();
@@ -47,11 +46,7 @@ const TYPHOON_MODEL = process.env.TYPHOON_MODEL || DEFAULT_MODEL;
 const TYPHOON_API_KEY = process.env.TYPHOON_API_KEY || "";
 const WEB_AUTH_TOKEN = process.env.WEB_AUTH_TOKEN || "";
 const WEBAI_WORKSPACE = process.env.WEBAI_WORKSPACE || "";
-
-const OMP_ENABLED = envBool("OMP_ENABLED");
-const OMP_COMMAND = process.env.OMP_COMMAND || "omp";
-const OMP_PROVIDER = process.env.OMP_PROVIDER || "opentyphoon";
-const OMP_MODEL = process.env.OMP_MODEL || TYPHOON_MODEL;
+const WEBAI_NATIVE_WORKER_ENABLED = envBool("WEBAI_NATIVE_WORKER_ENABLED");
 const AGENT_STATE_PATH = process.env.AGENT_STATE_PATH || resolve(process.cwd(), ".webai", "agent-state.json");
 
 const ECC_ENABLED = envBool("ECC_ENABLED");
@@ -88,7 +83,16 @@ for (const origin of configuredOrigins) {
 function allowedOrigin(origin) {
   if (!origin) return true;
   const normalized = origin.replace(/\/$/, "");
-  if (configuredOrigins.includes(normalized) && (SAFE_ORIGINS.has(normalized) || new URL(normalized).hostname === "localhost" || new URL(normalized).hostname === "127.0.0.1" || new URL(normalized).hostname === "[::1]")) return true;
+  if (configuredOrigins.includes(normalized)) {
+    if (SAFE_ORIGINS.has(normalized)) return true;
+    try {
+      const url = new URL(normalized);
+      return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+        && ["http:", "https:"].includes(url.protocol);
+    } catch {
+      return false;
+    }
+  }
   try {
     const url = new URL(origin);
     return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
@@ -227,19 +231,28 @@ async function requestTyphoon(chat) {
   }
 }
 
+function workspaceConfigured() {
+  return Boolean(WEBAI_WORKSPACE) && existsSync(WEBAI_WORKSPACE);
+}
+
 function capabilityRegistry() {
-  const workspaceConfigured = Boolean(WEBAI_WORKSPACE) && existsSync(WEBAI_WORKSPACE);
+  const workspaceReady = workspaceConfigured();
+  const nativeReady = WEBAI_NATIVE_WORKER_ENABLED && workspaceReady;
   return {
     typhoon: {
       enabled: true,
       configured: Boolean(TYPHOON_API_KEY),
       model: TYPHOON_MODEL,
     },
-    omp: {
-      enabled: OMP_ENABLED,
-      configured: OMP_ENABLED && workspaceConfigured && Boolean(OMP_COMMAND),
-      provider: OMP_PROVIDER,
-      model: OMP_MODEL,
+    webaiCore: {
+      enabled: true,
+      configured: Boolean(TYPHOON_API_KEY),
+      lifecycle: "supervised",
+    },
+    nativeWorker: {
+      enabled: WEBAI_NATIVE_WORKER_ENABLED,
+      configured: nativeReady,
+      mode: "guarded-file-worker",
     },
     ecc: {
       enabled: ECC_ENABLED,
@@ -264,87 +277,19 @@ function capabilityRegistry() {
   };
 }
 
-function ompChildEnvironment() {
+function safeChildEnvironment() {
   const allowedNames = ["PATH", "PATHEXT", "SYSTEMROOT", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"];
   return Object.fromEntries(allowedNames
     .filter((name) => typeof process.env[name] === "string" && process.env[name])
     .map((name) => [name, process.env[name]]));
 }
 
-function runOmp(prompt) {
-  const capabilities = capabilityRegistry();
-  if (!capabilities.omp.enabled) {
-    throw Object.assign(new Error("omp_disabled"), { status: 503 });
-  }
-  if (!capabilities.omp.configured) {
-    throw Object.assign(new Error("omp_not_configured"), { status: 503 });
-  }
-  if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 16_000) {
-    throw Object.assign(new Error("invalid_prompt"), { status: 400 });
-  }
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(OMP_COMMAND, ["--mode", "rpc", "--no-session"], {
-      cwd: WEBAI_WORKSPACE,
-      env: ompChildEnvironment(),
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    let finalText = "";
-    let done = false;
-    let buffer = "";
-
-    const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(Object.assign(new Error("omp_timeout"), { status: 504 }));
-    }, OMP_TIMEOUT_MS);
-
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stderr.resume();
-    child.stdout.on("data", (chunk) => {
-      buffer += chunk;
-      let newline;
-      while ((newline = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
-        if (!line) continue;
-        try {
-          const event = JSON.parse(line);
-          if (event.type === "ready") {
-            child.stdin.write(JSON.stringify({ id: "m1", type: "set_model", provider: OMP_PROVIDER, modelId: OMP_MODEL }) + "\n");
-            child.stdin.write(JSON.stringify({ id: "p1", type: "prompt", message: prompt }) + "\n");
-          }
-          if (event.type === "message_update" && event?.assistantMessageEvent?.type === "text_delta") {
-            finalText += event.assistantMessageEvent.delta || "";
-          }
-          if (event.type === "agent_end") {
-            done = true;
-            child.stdin.end();
-          }
-        } catch {
-          // Ignore non-JSON stdout lines; never return raw environment values.
-        }
-      }
-    });
-
-    child.on("error", (error) => {
-      clearTimeout(timeout);
-      reject(Object.assign(new Error("omp_spawn_failed"), { status: 503 }));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (done && code === 0) {
-        return resolve({ ok: true, worker: "omp", content: finalText, verification: null });
-      }
-      reject(Object.assign(new Error("omp_failed"), { status: 502 }));
-    });
-  });
+async function unavailableLegacyWorker() {
+  throw Object.assign(new Error("native_worker_disabled"), { status: 503 });
 }
 
 function runVerification() {
-  const workspaceConfigured = Boolean(WEBAI_WORKSPACE) && existsSync(WEBAI_WORKSPACE);
-  if (!workspaceConfigured) {
+  if (!workspaceConfigured()) {
     throw Object.assign(new Error("workspace_not_configured"), { status: 503 });
   }
 
@@ -352,7 +297,7 @@ function runVerification() {
     const command = process.platform === "win32" ? "npm.cmd" : "npm";
     const child = spawn(command, ["test"], {
       cwd: WEBAI_WORKSPACE,
-      env: ompChildEnvironment(),
+      env: safeChildEnvironment(),
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
@@ -387,7 +332,7 @@ function runVerification() {
 
 const agentService = createAgentService({
   requestModel: requestTyphoon,
-  runWorker: runOmp,
+  runWorker: unavailableLegacyWorker,
   runVerification,
   statePath: AGENT_STATE_PATH,
 });
@@ -408,21 +353,23 @@ const server = http.createServer(async (req, res) => {
     const capabilities = capabilityRegistry();
     return send(req, res, 200, {
       ok: true,
-      version: "0.3.1",
+      version: "0.4.0",
       provider: "opentyphoon",
       model: TYPHOON_MODEL,
       keyConfigured: capabilities.typhoon.configured,
       typhoonConfigured: capabilities.typhoon.configured,
-      ompEnabled: capabilities.omp.enabled && capabilities.omp.configured,
-      workspaceConfigured: Boolean(WEBAI_WORKSPACE) && existsSync(WEBAI_WORKSPACE),
+      workspaceConfigured: workspaceConfigured(),
+      nativeWorkerEnabled: capabilities.nativeWorker.enabled,
+      nativeWorkerConfigured: capabilities.nativeWorker.configured,
       authEnabled: Boolean(WEB_AUTH_TOKEN),
+      core: agentService.status(),
       agent: agentService.status(),
       capabilities,
     });
   }
 
   if (req.method === "GET" && url.pathname === "/") {
-    return send(req, res, 200, { name: "WebAi API", version: "0.3.1", health: "/api/health" });
+    return send(req, res, 200, { name: "WebAi Core API", version: "0.4.0", health: "/api/health" });
   }
 
   if (!withinRateLimit(req)) {
@@ -471,18 +418,13 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    if (req.method === "POST" && url.pathname === "/api/omp/prompt") {
-      const body = await readJson(req);
-      return send(req, res, 200, await runOmp(String(body.prompt || "")));
-    }
-
-    const isAgentCollection = url.pathname === "/api/tasks" || url.pathname === "/api/agent/tasks";
+    const isTaskCollection = url.pathname === "/api/tasks" || url.pathname === "/api/agent/tasks";
     const taskMatch = url.pathname.match(/^\/api\/(?:agent\/)?tasks\/([^/]+)(?:\/(approve|verify))?$/);
-    if (isAgentCollection && req.method === "POST") {
+    if (isTaskCollection && req.method === "POST") {
       const task = await agentService.createTask(await readJson(req));
       return send(req, res, 201, { task });
     }
-    if (isAgentCollection && req.method === "GET") {
+    if (isTaskCollection && req.method === "GET") {
       return send(req, res, 200, { tasks: agentService.listTasks() });
     }
     if (taskMatch) {
@@ -500,7 +442,7 @@ const server = http.createServer(async (req, res) => {
       return send(req, res, 405, { error: "method_not_allowed" }, { Allow: "GET, POST, OPTIONS" });
     }
 
-    if (url.pathname === "/api/typhoon/chat" || url.pathname === "/api/chat" || url.pathname === "/api/plan" || url.pathname === "/api/omp/prompt" || isAgentCollection) {
+    if (url.pathname === "/api/typhoon/chat" || url.pathname === "/api/chat" || url.pathname === "/api/plan" || isTaskCollection) {
       return send(req, res, 405, { error: "method_not_allowed" }, { Allow: "POST, OPTIONS" });
     }
 
@@ -513,6 +455,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   const caps = capabilityRegistry();
-  console.log(`WebAi API listening on 127.0.0.1:${PORT}`);
-  console.log(`Typhoon configured: ${caps.typhoon.configured} | OMP: ${caps.omp.enabled}/${caps.omp.configured}`);
+  console.log(`WebAi Core API listening on 127.0.0.1:${PORT}`);
+  console.log(`Typhoon configured: ${caps.typhoon.configured} | NativeWorker: ${caps.nativeWorker.enabled}/${caps.nativeWorker.configured}`);
 });
