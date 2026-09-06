@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07101f">
+  <meta name="description" content="WebAi Reasoning Engine V0.1 — Decompose, Solve, Verify, Revise, Final">
+  <title>WebAi · Reasoning Engine V0.1</title>
+  <link rel="stylesheet" href="./reasoning.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./"><span class="logo">W</span><span><b>WebAi</b><small>REASONING ENGINE · V0.1</small></span></a>
+    <nav><a href="./">Workspace</a><a class="active" href="./reasoning.html">Reasoning</a><a href="./benchmark-v11.html">CB-1.1</a></nav>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <span class="eyebrow">AI CPU · COGNITIVE SCAFFOLD</span>
+      <h1>Decompose → Solve → Verify → Revise → Final</h1>
+      <p>ใช้โมเดลตัวเดิมสองรอบ: รอบแรกแยกงานและสร้างคำตอบ candidate จากนั้นรอบสองตรวจข้อจำกัดและแก้คำตอบก่อนส่ง final โดยแสดงเฉพาะสรุปการตัดสินใจสั้น ๆ ไม่ใช่ hidden chain-of-thought</p>
+    </section>
+
+    <section class="card connection">
+      <label><span>BACKEND API BASE</span><input id="apiBase" inputmode="url" autocomplete="url"></label>
+      <button id="connectBtn" class="secondary" type="button">Check connection</button>
+      <div class="status"><i id="connectionDot"></i><b id="connectionLabel">Checking…</b><small id="modelLabel">OpenTyphoon</small></div>
+    </section>
+
+    <section class="card taskCard">
+      <div class="sectionHead"><div><span class="eyebrow">TASK</span><h2>ลองโจทย์ที่โมเดลเคยพลาด</h2></div><span id="runState" class="badge">IDLE</span></div>
+      <textarea id="taskInput" rows="7" placeholder="เช่น: API field นี้ถูกใช้ทั้ง frontend และ mobile ให้วางแผนเปลี่ยนชื่อโดยลด regression และต้อง rollback ได้"></textarea>
+      <div class="actions">
+        <button id="runRawBtn" class="secondary" type="button" disabled>Raw model</button>
+        <button id="runReasoningBtn" class="primary" type="button" disabled>Run Reasoning Engine</button>
+      </div>
+    </section>
+
+    <section class="pipeline" aria-label="Reasoning stages">
+      <article class="stage"><span>1</span><div><b>Decompose</b><small>แยก subtask labels</small></div></article>
+      <i>→</i><article class="stage"><span>2</span><div><b>Solve</b><small>สร้าง candidate</small></div></article>
+      <i>→</i><article class="stage"><span>3</span><div><b>Verify</b><small>เช็ค logic + constraints</small></div></article>
+      <i>→</i><article class="stage"><span>4</span><div><b>Revise</b><small>แก้เมื่อพบข้อผิด</small></div></article>
+      <i>→</i><article class="stage"><span>5</span><div><b>Final</b><small>คำตอบสุดท้าย</small></div></article>
+    </section>
+
+    <section class="resultsGrid">
+      <article class="card"><span class="eyebrow">DECOMPOSITION</span><div id="decomposition" class="empty">ยังไม่มีผล</div></article>
+      <article class="card"><span class="eyebrow">VERIFY / REVISE</span><div id="checks" class="empty">ยังไม่มีผล</div></article>
+      <article class="card wide finalCard"><span class="eyebrow">FINAL ANSWER</span><pre id="finalAnswer">ยังไม่มีผล</pre><div id="meta" class="meta"></div></article>
+    </section>
+  </main>
+
+  <script src="./reasoning-engine.js"></script>
+  <script>
+  (() => {
+    const $ = (s) => document.querySelector(s);
+    const els = { base: $("#apiBase"), connect: $("#connectBtn"), dot: $("#connectionDot"), label: $("#connectionLabel"), model: $("#modelLabel"), input: $("#taskInput"), raw: $("#runRawBtn"), reasoning: $("#runReasoningBtn"), state: $("#runState"), decomposition: $("#decomposition"), checks: $("#checks"), final: $("#finalAnswer"), meta: $("#meta") };
+    let connected = false;
+    els.base.value = WebAiReasoningEngine.normalizeBase();
+
+    function setConnected(ok, text, model = "OpenTyphoon") { connected = ok; els.dot.className = ok ? "ok" : "bad"; els.label.textContent = text; els.model.textContent = model; els.raw.disabled = !ok; els.reasoning.disabled = !ok; }
+    async function health() {
+      const base = WebAiReasoningEngine.normalizeBase(els.base.value); localStorage.setItem("webai.apiBase", base); els.label.textContent = "Checking…"; els.dot.className = "working";
+      try { const r = await fetch(`${base}/api/health`); const d = await r.json(); if (!r.ok || !(d.keyConfigured || d.typhoonConfigured)) throw new Error(d.error || "Typhoon not configured"); setConnected(true, "Backend + Typhoon ready", d.model || "OpenTyphoon"); }
+      catch (e) { setConnected(false, e.message); }
+    }
+    function renderList(host, values) { host.replaceChildren(); if (!values?.length) { host.textContent = "—"; host.className = "empty"; return; } host.className = "list"; values.forEach((v) => { const p = document.createElement("p"); p.textContent = v; host.appendChild(p); }); }
+    function busy(on, label) { els.state.textContent = label || (on ? "RUNNING" : "IDLE"); els.raw.disabled = on || !connected; els.reasoning.disabled = on || !connected; }
+    async function raw() {
+      const prompt = els.input.value.trim(); if (!prompt) return; busy(true, "RAW"); els.decomposition.textContent = "Raw mode ข้ามขั้น Decompose"; els.checks.textContent = "Raw mode ข้ามขั้น Verify";
+      try { const base = WebAiReasoningEngine.normalizeBase(els.base.value); const started = performance.now(); const r = await fetch(`${base}/api/typhoon/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "system", content: "Answer the user's task directly in the user's language." }, { role: "user", content: prompt }], temperature: 0, max_tokens: 1800 }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); els.final.textContent = d?.choices?.[0]?.message?.content || "(empty)"; els.meta.textContent = `Raw · ${Math.round(performance.now() - started)} ms`; }
+      catch (e) { els.final.textContent = `ERROR: ${e.message}`; } finally { busy(false); }
+    }
+    async function reason() {
+      const prompt = els.input.value.trim(); if (!prompt) return; busy(true, "DECOMPOSE");
+      try { const result = await WebAiReasoningEngine.run(prompt, { baseUrl: els.base.value, onStage: (stage) => { els.state.textContent = stage.toUpperCase(); } }); renderList(els.decomposition, [...result.decomposition, ...result.assumptions.map((v) => `assumption: ${v}`)]); renderList(els.checks, result.checks); els.final.textContent = result.final || result.revised || result.candidate || "(empty)"; els.meta.textContent = `${result.meta.version} · ${result.meta.calls} calls · ${result.meta.latencyMs} ms · ${result.meta.usage.total_tokens || 0} tokens`; }
+      catch (e) { els.final.textContent = `ERROR: ${e.message}`; } finally { busy(false); }
+    }
+    els.connect.addEventListener("click", health); els.raw.addEventListener("click", raw); els.reasoning.addEventListener("click", reason); health();
+  })();
+  </script>
+</body>
+</html>
