@@ -19,30 +19,50 @@ jobs:
       - name: Syntax check
         run: |
           node --check server/index.mjs
+          node --check server/core.mjs
           node --check server/agent.mjs
           node --check server/native-worker.mjs
           node --check app.js
           node --check app-core.js
           node --check capability-bridge.js
           node --check native-core-ui.js
+          node --check core-bridge.js
+          node --check scripts/smoke.mjs
+          node --check scripts/core-smoke.mjs
           node --check scripts/agent-smoke.mjs
           node --check scripts/native-worker-smoke.mjs
-          node --check scripts/smoke.mjs
-      - name: Native core contract
+      - name: Secret proxy contract
         run: |
-          grep -q 'executionTarget = "webai-native"' app.js
-          grep -q 'native-core-ui.js' app.js
+          grep -q 'webai-typhoon-proxy' server/index.mjs
+          grep -q 'TYPHOON_API_KEY' server/index.mjs
+          grep -q '/api/typhoon/chat' server/index.mjs
+          ! grep -q 'WEBAI_WORKSPACE' server/index.mjs
+          ! grep -q 'createAgentService' server/index.mjs
+          ! grep -q 'node:child_process' server/index.mjs
+          ! grep -q '/api/tasks' server/index.mjs
+          ! grep -q 'nativeWorker' server/index.mjs
+          ! grep -q 'AGENT_STATE' server/index.mjs
+      - name: WebAi Core contract
+        run: |
+          grep -q 'webai-core' server/core.mjs
+          grep -q 'TYPHOON_PROXY_BASE_URL' server/core.mjs
+          grep -q 'WEBAI_CORE_PAIRING_TOKEN' server/core.mjs
+          grep -q 'WEBAI_CORE_SESSION_SECRET' server/core.mjs
+          grep -q 'x-webai-session' server/core.mjs
+          grep -q 'ownerStatePath' server/core.mjs
+          grep -q 'createAgentService' server/core.mjs
+          ! grep -q 'TYPHOON_API_KEY' server/core.mjs
           grep -q 'webai-native-v0.1' server/native-worker.mjs
           grep -q 'native_path_denied' server/native-worker.mjs
           grep -q 'native_symlink_denied' server/native-worker.mjs
-          grep -q 'nativeWorker' server/index.mjs
-          grep -q 'webaiCore' server/index.mjs
+      - name: Frontend split contract
+        run: |
+          grep -q 'executionTarget = "webai-native"' app.js
+          grep -q 'native-core-ui.js' app.js
+          grep -q 'core-bridge.js' app.js
+          grep -q 'webai.coreBase' core-bridge.js
+          grep -q 'x-webai-session' core-bridge.js
           ! grep -qi 'browserpod' app.js
           ! grep -qi 'browser-linux' app.js
-          ! grep -q 'OMP_COMMAND' server/index.mjs
-          ! grep -q 'OMP_PROVIDER' server/index.mjs
-          ! grep -q 'runOmp' server/index.mjs
-          ! grep -q '/api/omp/prompt' server/index.mjs
-          ! grep -q 'caps.omp' capability-bridge.js
       - name: Test suite
         run: npm test
