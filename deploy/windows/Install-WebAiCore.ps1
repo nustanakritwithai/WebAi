@@ -94,6 +94,12 @@ foreach ($path in @($workspacePath, $runtimeLogPath)) {
     & icacls.exe $path /inheritance:r /grant $systemFull /grant $administratorsFull /grant $localServiceModify /t /c | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to restrict ACL for $path." }
 }
+# The inheritance-only ACE above protects newly created descendants. Grant read/execute
+# directly to existing files so Local Service can launch the runner and read its configuration.
+foreach ($path in @($projectPath, $configurationPath)) {
+    & icacls.exe $path /grant '*S-1-5-19:RX' /t /c | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Failed to grant Local Service read access to $path." }
+}
 
 $include = 'Include "conf/extra/webai-core-5445.conf"'
 $apacheText = Get-Content -LiteralPath $ApacheConfigPath -Raw
