@@ -1,5 +1,5 @@
 (() => {
-  document.documentElement.dataset.executionTarget = "webai-native";
+  document.documentElement.dataset.executionTarget = "browser-agent";
 
   const load = (src, done) => {
     const script = document.createElement("script");
@@ -11,6 +11,7 @@
 
   load("./browser-memory-client.js", () => {
     load("./app-core.js", () => {
+      // Browser Agent runs entirely in the page through the existing Host A proxy.
       load("./capability-bridge.js");
     });
   });

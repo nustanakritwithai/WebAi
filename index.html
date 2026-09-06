@@ -248,6 +248,44 @@
         </div>
       </section>
 
+      <section class="fileWorkspaceSection" id="fileWorkspace">
+        <div class="sectionHead">
+          <div><span class="sectionKicker">BROWSER WORKSPACE</span><h2>Agent files</h2></div>
+          <small class="workspacePersistenceNote">Persisted in this browser with IndexedDB</small>
+        </div>
+
+        <div class="fileWorkspaceGrid">
+          <aside class="fileTreePane" aria-label="Browser workspace files">
+            <div class="filePaneHead">
+              <div><b>Workspace</b><small id="workspaceStatus">Opening local workspace…</small></div>
+              <span class="workspaceStorageBadge">LOCAL</span>
+            </div>
+            <div class="fileTreeActions">
+              <button id="newWorkspaceFolder" class="workspaceAction" type="button">＋ Folder</button>
+              <button id="newWorkspaceFile" class="workspaceAction primary" type="button">＋ Text file</button>
+            </div>
+            <div id="workspaceTree" class="workspaceTree" role="tree" aria-label="Workspace tree"></div>
+            <div id="workspaceTreeEmpty" class="workspaceTreeEmpty"><span>◇</span><b>No files yet</b><small>Create a folder or text file for the browser agent.</small></div>
+          </aside>
+
+          <section class="fileEditorPane" aria-label="Workspace file editor">
+            <div class="fileEditorHead">
+              <div><span class="sectionKicker">EDITOR</span><h3 id="workspaceEditorPath">No file selected</h3></div>
+              <div class="fileEditorActions">
+                <button id="saveWorkspaceFile" class="workspaceAction primary" type="button" disabled>Save</button>
+                <button id="deleteWorkspaceItem" class="workspaceAction danger" type="button" disabled>Delete</button>
+              </div>
+            </div>
+            <div id="workspaceEditorEmpty" class="workspaceEditorEmpty"><span>✎</span><b>Select a text file</b><small>Files created here stay inside this browser and never touch the server filesystem.</small></div>
+            <div id="workspaceEditor" class="workspaceEditor" hidden>
+              <label class="workspaceEditorLabel" for="workspaceEditorInput">File contents</label>
+              <textarea id="workspaceEditorInput" spellcheck="false" aria-label="File contents"></textarea>
+              <div class="workspaceEditorFoot"><span id="workspaceEditorMeta">Ready</span><span>Ctrl/Cmd + S to save</span></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
       <section class="lowerGrid">
         <article class="card" id="monitor">
           <div class="cardHead"><div><span class="sectionKicker">SYSTEM HEALTH</span><h3>AI Team</h3></div><button id="openInspectorBtn" class="ghostBtn" type="button">Details</button></div>
@@ -325,5 +363,6 @@
   </nav>
 
   <script src="./app.js" defer></script>
+  <script src="./workspace.js" defer></script>
 </body>
 </html>
