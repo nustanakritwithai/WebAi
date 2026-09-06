@@ -23,20 +23,24 @@ jobs:
           node --check app-core.js
           node --check capability-bridge.js
           node --check browserpod-storage-lock-fix.js
-          node --check browser-linux-worker.js
+          node --check browser-linux-worker-v03.js
           node --check coi-sw.js
       - name: Browser worker contract
         run: |
           grep -q 'executionTarget = "browser"' app.js
           grep -q 'browserpod-storage-lock-fix.js' app.js
-          grep -q 'mobileSafeMode: true' browser-linux-worker.js
-          grep -q 'ensureCommandTerminal' browser-linux-worker.js
-          grep -q 'state.operation' browser-linux-worker.js
-          grep -q 'Linux Running' browser-linux-worker.js
-          grep -q 'createDefaultTerminal' browser-linux-worker.js
-          grep -q 'Cross-Origin-Embedder-Policy' coi-sw.js
+          grep -q 'browser-linux-worker-v03.js' app.js
+          grep -q 'minimalMode: true' browser-linux-worker-v03.js
+          grep -q 'พร้อม Clone / Sync WebAi' browser-linux-worker-v03.js
+          grep -q 'ensureCommandTerminal' browser-linux-worker-v03.js
+          grep -q 'state.operation' browser-linux-worker-v03.js
+          grep -q 'command -v git' browser-linux-worker-v03.js
+          grep -q 'createDefaultTerminal' browser-linux-worker-v03.js
+          ! grep -q 'runPreflight' browser-linux-worker-v03.js
+          ! grep -q 'browser-linux-worker.js' app.js
           ! grep -q 'browser-linux-operation-guard.js' app.js
           ! grep -q 'browser-linux-running-ui-fix.js' app.js
           ! grep -q 'browser-linux-hotfix.js' app.js
+          grep -q 'Cross-Origin-Embedder-Policy' coi-sw.js
       - name: API smoke test
         run: npm run smoke
