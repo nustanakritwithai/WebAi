@@ -11,7 +11,9 @@
 
   load("./app-core.js", () => {
     load("./capability-bridge.js", () => {
-      load("./core-bridge.js", () => load("./core-mode.js"));
+      load("./core-bridge.js", () => {
+        load("./core-mode.js", () => load("./diff-evidence.js"));
+      });
     });
   });
 })();
