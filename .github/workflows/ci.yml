@@ -42,6 +42,7 @@ jobs:
           node --check scripts/native-worker-smoke.mjs
           node --check scripts/diff-evidence-smoke.mjs
           node --check scripts/verification-engine-smoke.mjs
+          node --check scripts/verification-state-smoke.mjs
           node --check scripts/snapshot-smoke.mjs
           node --check scripts/recovery-smoke.mjs
       - name: Secret proxy contract
@@ -103,6 +104,7 @@ jobs:
           ! grep -q 'TYPHOON_API_KEY' server/verification-engine.mjs
           grep -q 'normalizeVerificationGates' server/agent.mjs
           grep -q 'passedRequired' server/agent.mjs
+          grep -q 'raw gate output must not enter task state' scripts/verification-state-smoke.mjs
       - name: Browser Agent and Memory primary contract
         run: |
           grep -q 'executionTarget = "browser-agent"' app.js
