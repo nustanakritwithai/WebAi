@@ -11,8 +11,13 @@
 
   load("./browser-memory-client.js", () => {
     load("./app-core.js", () => {
-      // Browser Agent runs entirely in the page through the existing Host A proxy.
-      load("./capability-bridge.js");
+      // Browser Agent + Browser Memory remain the primary no-Host-B workflow.
+      load("./capability-bridge.js", () => {
+        // Core Execute is an optional execution plane layered on top.
+        load("./core-bridge.js", () => {
+          load("./core-execute.js", () => load("./diff-evidence.js"));
+        });
+      });
     });
   });
 })();

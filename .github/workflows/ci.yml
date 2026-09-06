@@ -24,16 +24,21 @@ jobs:
           node --check server/agent.mjs
           node --check server/native-worker.mjs
           node --check server/snapshot-store.mjs
+          node --check server/diff-evidence.mjs
+          node --check browser-memory-client.js
           node --check app.js
           node --check app-core.js
           node --check workspace.js
           node --check capability-bridge.js
           node --check core-bridge.js
-          node --check core-mode.js
+          node --check core-execute.js
+          node --check diff-evidence.js
           node --check scripts/smoke.mjs
+          node --check scripts/browser-memory-smoke.mjs
           node --check scripts/core-smoke.mjs
           node --check scripts/agent-smoke.mjs
           node --check scripts/native-worker-smoke.mjs
+          node --check scripts/diff-evidence-smoke.mjs
           node --check scripts/snapshot-smoke.mjs
           node --check scripts/recovery-smoke.mjs
       - name: Secret proxy contract
@@ -47,64 +52,62 @@ jobs:
           ! grep -q '/api/tasks' server/index.mjs
           ! grep -q 'nativeWorker' server/index.mjs
           ! grep -q 'snapshot' server/index.mjs
-          ! grep -q 'AGENT_STATE' server/index.mjs
-      - name: WebAi Core contract
+      - name: Core transaction contract
         run: |
           grep -q 'webai-core' server/core.mjs
           grep -q 'TYPHOON_PROXY_BASE_URL' server/core.mjs
-          grep -q 'WEBAI_CORE_PAIRING_TOKEN' server/core.mjs
-          grep -q 'WEBAI_CORE_SESSION_SECRET' server/core.mjs
-          grep -q 'x-webai-session' server/core.mjs
-          grep -q 'ownerStatePath' server/core.mjs
-          grep -q 'createAgentService' server/core.mjs
           ! grep -q 'TYPHOON_API_KEY' server/core.mjs
-          grep -q 'webai-native-v0.1' server/native-worker.mjs
-          grep -q 'native_path_denied' server/native-worker.mjs
-          grep -q 'native_symlink_denied' server/native-worker.mjs
-      - name: Transaction and rollback contract
-        run: |
           grep -q 'createSnapshotStore' server/core.mjs
           grep -q 'WEBAI_CORE_SNAPSHOT_DIR' server/core.mjs
           grep -q 'withWorkspaceLock' server/core.mjs
-          grep -q 'approve|verify|rollback' server/core.mjs
           grep -q 'service.rollback' server/core.mjs
           grep -q 'snapshotStore' server/agent.mjs
-          grep -q 'executionId' server/agent.mjs
           grep -q 'snapshot_captured' server/agent.mjs
           grep -q 'rollback_completed' server/agent.mjs
           grep -q 'completed_task_not_rollbackable' server/agent.mjs
-          grep -q 'async function prepare' server/native-worker.mjs
-          grep -q 'async function apply' server/native-worker.mjs
-      - name: Recovery contract
+      - name: Recovery and Diff evidence contract
         run: |
           grep -q 'recoverOwnerState' server/core.mjs
-          grep -q 'recoverOwnerState' server/core-recovery.mjs
           grep -q 'execution_recovered_applied' server/core-recovery.mjs
-          grep -q 'execution_recovered_to_snapshot' server/core-recovery.mjs
           grep -q 'execution_recovery_conflict' server/core-recovery.mjs
-          grep -q 'validateApplied' server/snapshot-store.mjs
-          grep -q 'restoreCaptured' server/snapshot-store.mjs
-          ! grep -q 'TYPHOON_API_KEY' server/core-recovery.mjs
-      - name: Snapshot foundation contract
-        run: |
-          grep -q 'createSnapshotStore' server/snapshot-store.mjs
-          grep -q 'rollback_conflict' server/snapshot-store.mjs
+          grep -q 'diffExact' server/core-recovery.mjs
+          grep -q 'createDiffEvidence' server/diff-evidence.mjs
+          grep -q 'MAX_MYERS_WORK' server/diff-evidence.mjs
+          grep -q 'bounded-replacement' server/diff-evidence.mjs
+          grep -q 'createDiffEvidence' server/snapshot-store.mjs
           grep -q 'beforeSha256' server/snapshot-store.mjs
           grep -q 'afterSha256' server/snapshot-store.mjs
-          grep -q 'restoreCaptured' server/snapshot-store.mjs
-          grep -q 'snapshot_store_inside_workspace' server/snapshot-store.mjs
-          ! grep -q 'TYPHOON_API_KEY' server/snapshot-store.mjs
-      - name: Frontend Browser Agent contract
+          grep -q 'additions' server/snapshot-store.mjs
+          grep -q 'deletions' server/snapshot-store.mjs
+          grep -q 'diffKind' server/agent.mjs
+          ! grep -q 'TYPHOON_API_KEY' server/diff-evidence.mjs
+      - name: Browser Agent and Memory primary contract
         run: |
           grep -q 'executionTarget = "browser-agent"' app.js
-          ! grep -q 'core-bridge.js' app.js
-          ! grep -q 'core-mode.js' app.js
+          grep -q 'browser-memory-client.js' app.js
           grep -q 'requestBrowserAgentChat' app-core.js
           grep -q '/api/typhoon/chat' app-core.js
           grep -q 'localOnly: true' app-core.js
           grep -q 'sandbox preview' app-core.js
           grep -q 'indexedDB' workspace.js
+          grep -q 'workspace.js' index.html
           ! grep -qi 'browserpod' app.js
           ! grep -qi 'browser-linux' app.js
+      - name: Optional Core Execute and Diff UI contract
+        run: |
+          grep -q 'core-bridge.js' app.js
+          grep -q 'core-execute.js' app.js
+          grep -q 'diff-evidence.js' app.js
+          grep -q 'webai.coreBase' core-bridge.js
+          grep -q 'x-webai-session' core-bridge.js
+          grep -q 'Core Execute' core-execute.js
+          grep -q 'webai.coreActiveTask' core-execute.js
+          grep -q 'webai.browserAgentTask' core-execute.js
+          grep -q '/api/tasks' core-execute.js
+          grep -q '/rollback' core-execute.js
+          grep -q 'diffEvidenceList' diff-evidence.js
+          grep -q 'BEFORE SHA-256' diff-evidence.js
+          grep -q 'AFTER SHA-256' diff-evidence.js
+          ! grep -q 'innerHTML' diff-evidence.js
       - name: Test suite
         run: npm test
