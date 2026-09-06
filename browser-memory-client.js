@@ -34,6 +34,7 @@
     init: () => call("init"),
     prepare: (payload) => call("prepare", payload),
     selectEcc: (payload) => call("selectEcc", payload),
+    composeMessages: (payload) => call("composeMessages", payload),
     recordExchange: (payload) => call("recordExchange", payload),
     saveTask: (task) => call("saveTask", { task }),
     async sanitize(text, limit) {

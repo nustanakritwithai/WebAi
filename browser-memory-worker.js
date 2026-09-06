@@ -10,7 +10,7 @@ import {
   sanitizeTask,
   tokenize
 } from "./browser-memory-core.js";
-import { selectEccPolicy } from "./ecc-policy-core.js";
+import { buildBoundedModelMessages, selectEccPolicy } from "./ecc-policy-core.js";
 
 const DB_NAME = "webai-browser-memory";
 const DB_VERSION = 1;
@@ -70,7 +70,10 @@ async function writeSnapshot(snapshot, event) {
     };
     const ecc = event?.ecc && typeof event.ecc === "object" ? {
       version: boundedText(event.ecc.version || "", 80),
-      ids: Array.isArray(event.ecc.ids) ? event.ecc.ids.slice(0, 4).map((id) => boundedText(id, 80)) : []
+      ids: Array.isArray(event.ecc.ids) ? event.ecc.ids.slice(0, 4).map((id) => boundedText(id, 80)) : [],
+      taskClass: boundedText(event.ecc.taskClass || "", 80),
+      risk: boundedText(event.ecc.risk || "", 40),
+      signals: Array.isArray(event.ecc.signals) ? event.ecc.signals.slice(0, 3).map((signal) => boundedText(signal, 80)) : []
     } : null;
     tx.objectStore("journal").add({ at: new Date().toISOString(), type: boundedText(event?.type || "update", 80), detail: boundedText(event?.detail || "", 500), ...(ecc ? { ecc } : {}) });
   });
@@ -100,6 +103,18 @@ async function prepare({ prompt, mode, model }) {
     return { prompt: safePrompt, exact: { answer: boundedText(exact.answer), key }, relatedContext: "", snapshot, ecc };
   }
   return { prompt: safePrompt, exact: null, relatedContext: buildRelatedContext(safePrompt, entries), snapshot, ecc };
+}
+
+function composeMessages({ system, ecc, relatedContext, history, prompt, mode }) {
+  const safePrompt = boundedText(prompt, 8_000);
+  const selectedEcc = ecc?.fingerprint ? ecc : selectEccPolicy({ prompt: safePrompt, mode });
+  return { ecc: selectedEcc, ...buildBoundedModelMessages({
+    system: boundedText(system, 4_000),
+    ecc: selectedEcc,
+    relatedContext: boundedText(relatedContext, 8_000),
+    history: Array.isArray(history) ? history.map((message) => ({ role: message?.role, content: boundedText(message?.content, 8_000) })) : [],
+    prompt: safePrompt
+  }) };
 }
 
 async function recordExchange({ user, answer, mode, model, task, ecc }) {
@@ -145,6 +160,7 @@ async function dispatch(type, payload) {
   if (type === "sanitize") return { text: boundedText(payload?.text, payload?.limit || 8_000) };
   if (type === "prepare") return prepare(payload || {});
   if (type === "selectEcc") return { ecc: selectEccPolicy(payload || {}) };
+  if (type === "composeMessages") return composeMessages(payload || {});
   if (type === "recordExchange") return recordExchange(payload || {});
   if (type === "saveTask") return saveTask(payload || {});
   throw new Error("คำสั่ง Browser memory ไม่รองรับ");
