@@ -34,31 +34,6 @@
     } catch {}
   }
 
-  function sessionHandoffParameters() {
-    const values = new URLSearchParams(location.hash.startsWith("#") ? location.hash.slice(1) : "");
-    const base = values.get("coreBase") || "";
-    const token = values.get("coreSession") || "";
-    const expiresAt = values.get("coreSessionExpiresAt") || "";
-    const client = values.get("coreClient") || "";
-    const expiresAtMs = Date.parse(expiresAt);
-    if (base !== "https://157.85.96.139:5445" || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)
-      || !/^[A-Za-z0-9_-]{16,80}$/.test(client) || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now() + 30_000) return null;
-    return { base, token, expiresAt, client };
-  }
-
-  async function consumeSessionHandoff() {
-    const handoff = sessionHandoffParameters();
-    if (!handoff) return false;
-    history.replaceState(null, "", `${location.pathname}${location.search}`);
-    localStorage.setItem(CORE_BASE_KEY, handoff.base);
-    localStorage.setItem(CORE_CLIENT_KEY, handoff.client);
-    localStorage.setItem(CORE_SESSION_KEY, handoff.token);
-    localStorage.setItem(CORE_SESSION_EXP_KEY, handoff.expiresAt);
-    if ($("#coreBase")) $("#coreBase").value = handoff.base;
-    await refreshCoreHealth();
-    return true;
-  }
-
   function ensureTeam(name, id) {
     let row = [...document.querySelectorAll(".teamGrid > div")]
       .find((item) => item.querySelector("b")?.textContent?.trim() === name);
@@ -276,7 +251,7 @@
   installCoreOverview();
   installCoreConnectionUi();
   installRequestBridge();
-  consumeSessionHandoff().catch(() => {}).finally(() => setTimeout(() => refreshCoreHealth().catch(() => {}), 700));
+  setTimeout(() => refreshCoreHealth().catch(() => {}), 700);
   setInterval(() => refreshCoreHealth().catch(() => {}), 30_000);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refreshCoreHealth().catch(() => {});
@@ -287,7 +262,6 @@
     connect: connectCore,
     exchangeSession,
     clearSession,
-    consumeSessionHandoff,
     isTaskReady: () => Boolean(coreBase()) && sessionValid(),
     request: coreTaskRequest,
   };
