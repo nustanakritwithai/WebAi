@@ -91,6 +91,16 @@ async function createAndApprove(sessionToken, goal) {
   if (!execution?.executionId || !execution?.snapshotId || execution.status !== "applied" || !execution.files?.length) {
     throw new Error("transaction evidence missing after approval");
   }
+  const file = execution.files[0];
+  if (file.path !== "src/app.js"
+    || typeof file.beforeSha256 !== "string" || file.beforeSha256.length !== 64
+    || typeof file.afterSha256 !== "string" || file.afterSha256.length !== 64
+    || typeof file.diffKind !== "string"
+    || typeof file.diffExact !== "boolean"
+    || !(file.additions === null || Number.isInteger(file.additions))
+    || !(file.deletions === null || Number.isInteger(file.deletions))) {
+    throw new Error("bounded file diff evidence missing after approval");
+  }
   return { taskId, approved: approved.data.task };
 }
 
@@ -115,8 +125,12 @@ try {
   const ownerB = await openSession("client_owner_000000000002");
   if (ownerB.response.status !== 201 || !ownerB.data.sessionToken) throw new Error("owner B session failed");
 
-  // Transaction 1: apply then roll back successfully.
+  // Transaction 1: apply, expose exact diff evidence, then roll back successfully.
   const first = await createAndApprove(ownerA.data.sessionToken, "Update fixture safely, then allow rollback");
+  const firstFile = first.approved.executions.at(-1).files[0];
+  if (firstFile.changed !== true || firstFile.additions !== 1 || firstFile.deletions !== 1 || firstFile.diffExact !== true || firstFile.diffKind !== "line-exact") {
+    throw new Error("exact line diff evidence failed for modified text file");
+  }
   if (readFileSync(join(workspace, "src", "app.js"), "utf8") !== "export const value = 'new';\n") throw new Error("native worker did not change workspace");
 
   const crossOwnerRead = await coreRequest(`/api/tasks/${encodeURIComponent(first.taskId)}`, ownerB.data.sessionToken);
@@ -127,8 +141,9 @@ try {
   const rolledBack = await coreRequest(`/api/tasks/${encodeURIComponent(first.taskId)}/rollback`, ownerA.data.sessionToken, "POST");
   if (rolledBack.response.status !== 200
     || rolledBack.data.task?.status !== "rolled_back"
-    || rolledBack.data.task?.rollback?.verified !== true) {
-    throw new Error("rollback did not complete with verified evidence");
+    || rolledBack.data.task?.rollback?.verified !== true
+    || rolledBack.data.task?.executions?.at(-1)?.files?.[0]?.additions !== 1) {
+    throw new Error("rollback did not preserve verified transaction evidence");
   }
   if (readFileSync(join(workspace, "src", "app.js"), "utf8") !== "export const value = 'old';\n") throw new Error("rollback did not restore original workspace bytes");
 
@@ -161,7 +176,7 @@ try {
   const listedB = await coreRequest("/api/tasks", ownerB.data.sessionToken);
   if (listedA.data.tasks?.length !== 3 || listedB.data.tasks?.length !== 0) throw new Error("owner-scoped task listing failed");
 
-  console.log("CORE SMOKE PASS: sessions, owner isolation, snapshot transaction, rollback, completed denial, drift conflict, verification");
+  console.log("CORE SMOKE PASS: sessions, owner isolation, diff evidence, snapshot transaction, rollback, completed denial, drift conflict, verification");
 } finally {
   core.kill("SIGTERM");
   await new Promise((resolve) => fakeProxy.close(resolve));

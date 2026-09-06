@@ -37,12 +37,20 @@ async function testExistingFileRollbackAndPersistence() {
     const applied = await h.store.recordAfter(captured.ref);
     assert.equal(applied.status, "applied");
     assert.notEqual(applied.files[0].beforeSha256, applied.files[0].afterSha256);
+    assert.equal(applied.files[0].changed, true);
+    assert.equal(applied.files[0].additions, 1);
+    assert.equal(applied.files[0].deletions, 2);
+    assert.equal(applied.files[0].diffExact, true);
+    assert.equal(applied.files[0].diffKind, "line-exact");
+    assert.equal(JSON.stringify(applied).includes("SECRET-SNAPSHOT-CONTENT"), false, "diff evidence must remain metadata-only");
 
     // Prove a Core restart can reconstruct the store from disk and rollback with the persisted ref.
     const restarted = createSnapshotStore({ workspace: h.workspace, snapshotRoot: h.snapshots });
     const rolled = await restarted.rollback(captured.ref);
     assert.equal(rolled.status, "rolled_back");
     assert.equal(rolled.rollback.verified, true);
+    assert.equal(rolled.files[0].additions, 1, "line evidence should persist with the durable snapshot");
+    assert.equal(rolled.files[0].deletions, 2);
     assert.equal(readFileSync(file, "utf8"), original);
   } finally {
     h.cleanup();
@@ -56,7 +64,11 @@ async function testCreatedFileRollbackDeletesIt() {
     const captured = await h.store.createSnapshot({ ...context("exec-new"), files: ["src/new.js"] });
     assert.equal(captured.snapshot.files[0].existed, false);
     writeFileSync(file, "export const created = true;\n");
-    await h.store.recordAfter(captured.ref);
+    const applied = await h.store.recordAfter(captured.ref);
+    assert.equal(applied.files[0].changed, true);
+    assert.equal(applied.files[0].additions, 1);
+    assert.equal(applied.files[0].deletions, 0);
+    assert.equal(applied.files[0].diffKind, "created");
     const rolled = await h.store.rollback(captured.ref);
     assert.equal(rolled.rollback.restoredFiles, 1);
     assert.equal(existsSync(file), false);
@@ -75,7 +87,8 @@ async function testMultiFileRollback() {
     const captured = await h.store.createSnapshot({ ...context("exec-multi"), files: ["src/a.js", "src/b.js"] });
     writeFileSync(a, "A-after\n");
     writeFileSync(b, "B-after\n");
-    await h.store.recordAfter(captured.ref);
+    const applied = await h.store.recordAfter(captured.ref);
+    assert.equal(applied.files.every((item) => item.additions === 1 && item.deletions === 1 && item.diffExact === true), true);
     await h.store.rollback(captured.ref);
     assert.equal(readFileSync(a, "utf8"), "A-before\n");
     assert.equal(readFileSync(b, "utf8"), "B-before\n");
@@ -117,12 +130,7 @@ async function testDeniedPathsAndSymlink() {
   const real = join(h.workspace, "src", "real.js");
   const link = join(h.workspace, "src", "link.js");
   writeFileSync(real, "safe\n");
-  let symlinkAvailable = true;
-  try { symlinkSync(real, link); }
-  catch (error) {
-    if (error?.code !== "EPERM") throw error;
-    symlinkAvailable = false;
-  }
+  symlinkSync(real, link);
   try {
     await assert.rejects(
       () => h.store.createSnapshot({ ...context("exec-env"), files: [".env"] }),
@@ -132,12 +140,10 @@ async function testDeniedPathsAndSymlink() {
       () => h.store.createSnapshot({ ...context("exec-traversal"), files: ["../escape.js"] }),
       (error) => error?.status === 400 && error?.message === "snapshot_invalid_path",
     );
-    if (symlinkAvailable) {
-      await assert.rejects(
-        () => h.store.createSnapshot({ ...context("exec-link"), files: ["src/link.js"] }),
-        (error) => error?.status === 403 && error?.message === "snapshot_symlink_denied",
-      );
-    }
+    await assert.rejects(
+      () => h.store.createSnapshot({ ...context("exec-link"), files: ["src/link.js"] }),
+      (error) => error?.status === 403 && error?.message === "snapshot_symlink_denied",
+    );
   } finally {
     h.cleanup();
   }
@@ -163,4 +169,4 @@ await testDriftConflictIsAllOrNothing();
 await testDeniedPathsAndSymlink();
 await testSnapshotRootCannotLiveInsideWorkspace();
 
-console.log("SNAPSHOT SMOKE PASS: persistence, rollback, created-file removal, multi-file restore, drift conflict, path/symlink boundaries");
+console.log("SNAPSHOT SMOKE PASS: persistence, diff metadata, rollback, created-file removal, multi-file restore, drift conflict, path/symlink boundaries");

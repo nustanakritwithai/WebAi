@@ -21,6 +21,11 @@ function publicFiles(files) {
     existed: file?.existed === true,
     beforeSha256: typeof file?.beforeSha256 === "string" ? file.beforeSha256.slice(0, 64) : null,
     afterSha256: typeof file?.afterSha256 === "string" ? file.afterSha256.slice(0, 64) : null,
+    changed: file?.changed === true,
+    additions: Number.isInteger(file?.additions) && file.additions >= 0 ? Math.min(file.additions, 1_000_000) : null,
+    deletions: Number.isInteger(file?.deletions) && file.deletions >= 0 ? Math.min(file.deletions, 1_000_000) : null,
+    diffExact: file?.diffExact === true,
+    diffKind: typeof file?.diffKind === "string" ? bounded(file.diffKind, 40) : null,
     ...(Number.isInteger(file?.bytesBefore) ? { bytesBefore: Math.max(0, file.bytesBefore) } : {}),
     ...(Number.isInteger(file?.bytesAfter) ? { bytesAfter: Math.max(0, file.bytesAfter) } : {}),
   })).filter((file) => file.path);
