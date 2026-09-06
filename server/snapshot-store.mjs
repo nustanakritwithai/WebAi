@@ -287,6 +287,21 @@ export function createSnapshotStore({ workspace, snapshotRoot }) {
     return publicManifest(manifest);
   }
 
+  async function validateApplied(ref) {
+    const { workspaceRoot } = await roots();
+    const { manifest } = await load(ref);
+    if (manifest.status !== "applied") throw httpError("snapshot_not_applied", 409);
+    const conflicts = [];
+    for (const file of manifest.files) {
+      const state = await fileState(workspaceRoot, file.path);
+      const expectedExists = file.afterExists === true;
+      const hashMatches = state.sha256 === (file.afterSha256 ?? null);
+      const modeMatches = state.mode === (file.afterMode ?? null);
+      if (state.exists !== expectedExists || !hashMatches || !modeMatches) conflicts.push(file.path);
+    }
+    return { ok: conflicts.length === 0, conflicts, snapshot: publicManifest(manifest) };
+  }
+
   async function rollback(ref) {
     const { workspaceRoot } = await roots();
     const { manifest, paths } = await load(ref);
@@ -336,5 +351,5 @@ export function createSnapshotStore({ workspace, snapshotRoot }) {
     return publicManifest(manifest);
   }
 
-  return { createSnapshot, recordAfter, restoreCaptured, rollback, getSnapshot };
+  return { createSnapshot, recordAfter, restoreCaptured, validateApplied, rollback, getSnapshot };
 }
