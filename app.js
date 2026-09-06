@@ -3,6 +3,11 @@
 
   const assetVersion = new URL(document.currentScript?.src || location.href, location.href).searchParams.get("v") || "dev";
 
+  const style = document.createElement("link");
+  style.rel = "stylesheet";
+  style.href = `./main-ui-v2.css?v=${encodeURIComponent(assetVersion)}`;
+  document.head.appendChild(style);
+
   const load = (src, done) => {
     const script = document.createElement("script");
     script.src = `${src}?v=${encodeURIComponent(assetVersion)}`;
@@ -13,6 +18,7 @@
 
   load("./browser-memory-client.js", () => {
     load("./app-core.js", () => {
+      load("./main-ui-v2.js");
       // Browser Agent + Browser Memory remain the primary no-Host-B workflow.
       load("./capability-bridge.js", () => {
         // Core Execute is an optional execution plane layered on top.
