@@ -55,7 +55,6 @@ const els = {
   activeMode: $("#activeMode"),
   elapsedTime: $("#elapsedTime"),
   approveExecution: $("#approveExecutionBtn"),
-  applyAgentFiles: $("#applyAgentFilesBtn"),
   verifyTask: $("#verifyTaskBtn"),
   agentActionHint: $("#agentActionHint"),
   agentError: $("#agentError"),
@@ -65,6 +64,7 @@ const els = {
   taskCount: $("#taskCount"),
   planBox: $("#planBox"),
   planEmpty: $("#planEmpty"),
+  artifactSummary: $("#artifactSummary"),
   clearLog: $("#clearLog"),
   log: $("#eventLog"),
   gateBadge: $("#gateBadge"),
@@ -312,7 +312,6 @@ function agentStatusLabel(status) {
     planning: "กำลังวางแผน",
     awaiting_approval: "รอตรวจแผนและอนุมัติ",
     executing: "กำลัง execute",
-    awaiting_apply: "รอ Apply เข้า Browser Workspace",
     applying: "กำลังเขียนไฟล์ใน IndexedDB",
     awaiting_preview: "รอ Run Preview",
     previewing: "กำลังรัน Sandbox Preview",
@@ -334,22 +333,19 @@ function updateAgentActions() {
   const task = state.agentTask;
   const isAgentMode = els.mode.value === "agent";
   const canApprove = isAgentMode && !state.busy && task?.status === "awaiting_approval";
-  const canApply = isAgentMode && !state.busy && task?.status === "awaiting_apply";
   const canVerify = isAgentMode && !state.busy && task?.status === "awaiting_verification" && workspacePreviewState?.loaded;
   if (els.approveExecution) els.approveExecution.disabled = !canApprove;
-  if (els.applyAgentFiles) els.applyAgentFiles.disabled = !canApply;
   if (els.verifyTask) els.verifyTask.disabled = !canVerify;
   if (els.runWorkspacePreview) els.runWorkspacePreview.disabled = !!state.busy;
   if (!els.agentActionHint) return;
   if (!task && isAgentMode) els.agentActionHint.textContent = "Agent ใช้ OpenTyphoon ผ่าน Host A และเก็บงานไว้ในเครื่องนี้";
   else if (!task) els.agentActionHint.textContent = "Agent จะหยุดรอให้คุณตรวจแผนก่อนขอ demo code";
   else if (task.status === "awaiting_approval") els.agentActionHint.textContent = "ตรวจ Plan ด้านล่าง แล้วอนุมัติเมื่อพร้อมให้ Agent สร้าง browser demo";
-  else if (task.status === "awaiting_apply") els.agentActionHint.textContent = "ตรวจ code cards แล้วกด Apply to Workspace เพื่อเขียน index.html, style.css และ app.js ลง IndexedDB";
-  else if (task.status === "awaiting_preview") els.agentActionHint.textContent = "ไฟล์อยู่ใน Browser Workspace แล้ว — เปิด Preview และกด Run Preview ก่อน Verify";
+  else if (task.status === "awaiting_preview") els.agentActionHint.textContent = `ไฟล์ถูกบันทึกใน ${task.workspaceFolder || `tasks/${task.id}`} แล้ว — เปิด Preview และกด Run Preview ก่อน Verify`;
   else if (task.status === "awaiting_verification" && !workspacePreviewState?.loaded) els.agentActionHint.textContent = "ต้อง Run Preview อีกครั้งในหน้านี้เพื่อสร้าง iframe load evidence ก่อน Verify";
   else if (task.status === "awaiting_verification") els.agentActionHint.textContent = "Sandbox Preview โหลดแล้ว — ตรวจผล แล้วกด Verify เพื่อปิดงาน";
   else if (task.status === "completed") els.agentActionHint.textContent = "ผ่าน Sandbox-preview verification แล้ว งานนี้จึงถือว่า DONE";
-  else if (task.status === "verification_failed") els.agentActionHint.textContent = "Sandbox-preview verification ไม่ผ่าน — ตรวจ code cards แล้วลองใหม่";
+  else if (task.status === "verification_failed") els.agentActionHint.textContent = "Sandbox-preview verification ไม่ผ่าน — ตรวจไฟล์ใน task folder แล้ว Run Preview ใหม่";
   else els.agentActionHint.textContent = `สถานะปัจจุบัน: ${agentStatusLabel(task.status)}`;
 }
 
@@ -546,6 +542,7 @@ function finishTask(summary, success = true) {
 function applyAgentTask(task) {
   if (!task) return;
   state.agentTask = task;
+  window.WebAiBrowserWorkspace?.setActiveTask?.(task.id);
   localStorage.setItem(BROWSER_AGENT_STORAGE_KEY, JSON.stringify(task));
   state.taskId = task.id || state.taskId;
   els.currentTaskId.textContent = state.taskId || "AGENT TASK";
@@ -556,11 +553,11 @@ function applyAgentTask(task) {
   els.taskStatus.textContent = agentStatusLabel(task.status);
   els.taskStatus.className = task.status === "completed" ? "pill ok" : ["failed", "verification_failed"].includes(task.status) ? "pill bad" : "pill info";
 
-  const progressByStatus = { planning: 1, awaiting_approval: 1, executing: 2, awaiting_apply: 2, applying: 2, awaiting_preview: 3, previewing: 3, awaiting_verification: 3, verifying: 3, completed: 4, verification_failed: 3, failed: 1 };
+  const progressByStatus = { planning: 1, awaiting_approval: 1, executing: 2, applying: 2, awaiting_preview: 3, previewing: 3, awaiting_verification: 3, verifying: 3, completed: 4, verification_failed: 3, failed: 1 };
   setProgress(Math.min(progressByStatus[task.status] ?? 1, 4), ["failed", "verification_failed"].includes(task.status));
   if (task.plan) showPlan(task.plan);
-  if (task.demo) showPlan(task.demo);
   if (task.worker?.content) showPlan(task.worker.content);
+  renderArtifactSummary(task);
   if (Array.isArray(task.events)) {
     const latest = task.events[task.events.length - 1];
     if (latest) addTimeline(agentEventTitle(latest.type), agentEventDetail(latest), latest.type.includes("failed") ? "bad" : latest.type.includes("passed") ? "ok" : "working");
@@ -574,10 +571,6 @@ function applyAgentTask(task) {
     els.gateBadge.textContent = "FAILED";
     els.gateBadge.className = "gateBadge fail";
     els.gateMessage.textContent = task.verification?.error || "Verification ไม่ผ่าน — งานยังไม่ถือว่า DONE";
-  } else if (task.status === "awaiting_apply") {
-    els.gateBadge.textContent = "READY TO APPLY";
-    els.gateBadge.className = "gateBadge waiting";
-    els.gateMessage.textContent = "Code พร้อมแล้ว แต่ยังไม่ถูกเขียนลง Browser Workspace จนกว่าจะกด Apply";
   } else if (task.status === "awaiting_preview") {
     els.gateBadge.textContent = "READY TO RUN";
     els.gateBadge.className = "gateBadge waiting";
@@ -591,8 +584,41 @@ function applyAgentTask(task) {
   updateAgentActions();
 }
 
+function renderArtifactSummary(task) {
+  if (!els.artifactSummary) return;
+  if (!Array.isArray(task?.appliedFiles) || !task.appliedFiles.length) {
+    els.artifactSummary.classList.add("hidden");
+    els.artifactSummary.replaceChildren();
+    return;
+  }
+  const folder = task.workspaceFolder || `tasks/${task.id}`;
+  const head = document.createElement("div");
+  head.className = "artifactSummaryHead";
+  const title = document.createElement("b");
+  title.textContent = "Artifacts saved to Browser Workspace";
+  const folderLabel = document.createElement("small");
+  folderLabel.textContent = folder;
+  head.append(title, folderLabel);
+  const list = document.createElement("ul");
+  task.appliedFiles.forEach((file) => {
+    const row = document.createElement("li");
+    const name = document.createElement("span");
+    const prefix = `${folder}/`;
+    name.textContent = String(file.path || "").startsWith(prefix) ? String(file.path).slice(prefix.length) : String(file.path || "artifact");
+    const revision = document.createElement("span");
+    revision.textContent = `revision ${Number(file.version) || 1}`;
+    row.append(name, revision);
+    list.appendChild(row);
+  });
+  const next = document.createElement("p");
+  next.className = "artifactSummaryNext";
+  next.textContent = task.status === "completed" ? "Verified from the task-folder sandbox preview." : task.status === "awaiting_verification" ? "Next: review the sandbox preview, then Verify." : "Next: open Preview and Run Preview from these task-folder files.";
+  els.artifactSummary.replaceChildren(head, list, next);
+  els.artifactSummary.classList.remove("hidden");
+}
+
 function agentEventTitle(type) {
-  return ({ task_created: "Agent task created", plan_ready: "Plan ready", execution_approved: "Execution approved", worker_finished: "Execution finished", verification_started: "Verification started", verification_passed: "Verification passed", verification_failed: "Verification failed", planning_failed: "Planning failed", worker_failed: "Execution failed" })[type] || type || "Agent event";
+  return ({ task_created: "Agent task created", plan_ready: "Plan ready", execution_approved: "Execution approved", demo_ready: "Output validated", files_applied: "Artifacts saved", preview_loaded: "Preview loaded", worker_finished: "Execution finished", verification_started: "Verification started", verification_passed: "Verification passed", verification_failed: "Verification failed", planning_failed: "Planning failed", worker_failed: "Execution failed" })[type] || type || "Agent event";
 }
 
 function agentEventDetail(event) {
@@ -645,7 +671,7 @@ function typhoonAnswer(data) {
 
 function browserDemoBlocks(text) {
   const parts = fencedBlocks(text) || [];
-  const aliases = { html: "html", css: "css", javascript: "javascript", js: "javascript" };
+  const aliases = { html: "html", css: "css", javascript: "javascript", js: "javascript", markdown: "markdown", md: "markdown" };
   return parts
     .filter((part) => aliases[part.language] && part.code?.trim())
     .map((part) => ({ ...part, language: aliases[part.language] }));
@@ -713,20 +739,28 @@ function validatePreviewCode(code, language) {
 
 function browserDemoFiles(text) {
   const blocks = browserDemoBlocks(text);
-  const files = { html: null, css: null, javascript: null };
+  const files = { html: null, css: null, javascript: null, markdown: null };
   for (const block of blocks) {
     if (files[block.language]) throw new Error(`Demo response has duplicate ${block.language} blocks.`);
-    validatePreviewCode(block.code, block.language);
+    if (block.language === "markdown") {
+      if (utf8Bytes(block.code) > AGENT_FILE_LIMIT) throw new Error(`README.md is larger than ${AGENT_FILE_LIMIT.toLocaleString()} bytes.`);
+    } else validatePreviewCode(block.code, block.language);
     files[block.language] = block.code;
   }
-  if (Object.values(files).some((value) => value == null)) throw new Error("Demo response ต้องมี code fences ครบทั้ง html, css และ javascript");
-  const totalBytes = Object.values(files).reduce((total, value) => total + utf8Bytes(value), 0);
+  if ([files.html, files.css, files.javascript].some((value) => value == null)) throw new Error("Demo response ต้องมี code fences ครบทั้ง html, css และ javascript");
+  const totalBytes = Object.values(files).filter((value) => value != null).reduce((total, value) => total + utf8Bytes(value), 0);
   if (totalBytes > AGENT_TOTAL_FILE_LIMIT) throw new Error(`Demo output is larger than ${AGENT_TOTAL_FILE_LIMIT.toLocaleString()} bytes.`);
-  return [
-    { path: "index.html", content: files.html },
-    { path: "style.css", content: files.css },
-    { path: "app.js", content: files.javascript }
+  const result = [
+    { name: "index.html", content: files.html },
+    { name: "style.css", content: files.css },
+    { name: "app.js", content: files.javascript }
   ];
+  if (files.markdown != null) result.push({ name: "README.md", content: files.markdown });
+  return result;
+}
+
+function browserAgentPlanDocument(task, plan) {
+  return `# Browser Agent Plan\n\n- Task: ${task.id}\n- Goal: ${task.goal}\n- Storage: ${task.workspaceFolder}\n- Status: awaiting approval\n\n${planText(plan)}\n`;
 }
 
 async function getBrowserWorkspace() {
@@ -762,18 +796,26 @@ async function createBrowserAgentTask(goal) {
   setProgress(1);
   addTimeline("Browser task created", "งาน local ใน browser · ไม่แก้ repository", "working");
   log(`Create local ${task.id} · Host A OpenTyphoon`);
+  const workspace = await getBrowserWorkspace();
+  task.workspaceFolder = await workspace.ensureTaskFolder(task.id);
+  await workspace.writeTaskFiles(task.id, [
+    { name: "PLAN.md", content: `# Browser Agent Plan\n\n- Task: ${task.id}\n- Goal: ${task.goal}\n- Status: planning\n- Storage: ${task.workspaceFolder}\n` },
+    { name: "TASK.json", content: JSON.stringify({ id: task.id, goal: task.goal, createdAt: task.startedAt, localOnly: true, workspaceFolder: task.workspaceFolder }, null, 2) }
+  ], { source: "browser-agent", taskId: task.id });
+  saveBrowserAgentTask();
   const data = await requestBrowserAgentChat([
     { role: "system", content: "You are Browser Agent through the existing Host A OpenTyphoon proxy. Create a structured, concise plan for a browser demo that addresses the user's goal. Use clear sections: Goal, UI/UX, Implementation, Acceptance criteria, and Safety. This is a local browser task only: do not edit, inspect, test, or claim changes to any repository, server, workspace, or native worker. Respond in the user's language." },
     { role: "user", content: goal }
   ], "browser-plan");
   task.plan = typhoonAnswer(data);
+  await workspace.writeTaskFiles(task.id, [{ name: "PLAN.md", content: browserAgentPlanDocument(task, task.plan) }], { source: "browser-agent", taskId: task.id });
   task.status = "awaiting_approval";
   addBrowserAgentEvent("plan_ready", "Structured plan ready for explicit approval");
   applyAgentTask(task);
   showPlan(task.plan);
   addTimeline("Plan ready", "ตรวจแผนก่อนขอ runnable browser demo code", "ok");
   log(`Local browser plan ready · ${task.id}`, "ok");
-  els.currentTaskDetail.textContent = "Plan พร้อมแล้ว — ตรวจรายละเอียดก่อนกด Approve & Generate Demo";
+  els.currentTaskDetail.textContent = "Plan พร้อมแล้ว — ตรวจรายละเอียดก่อนกด Approve & Save Files";
   state.busy = false;
   applyActionState();
 }
@@ -794,21 +836,30 @@ async function approveAgentExecution() {
   applyActionState();
   try {
     const data = await requestBrowserAgentChat([
-      { role: "system", content: "You are Browser Agent through the existing Host A OpenTyphoon proxy. Return a runnable browser demo for the approved goal. Include all three separate fenced code blocks, exactly labeled ```html, ```css, and ```javascript. Keep it self-contained with no external URLs, network calls, backend calls, repository edits, filesystem edits, server/workspace tests, or native workers. Add a short usage note outside the fences. The result will be shown as sandbox preview code cards." },
+      { role: "system", content: "You are Browser Agent through the existing Host A OpenTyphoon proxy. Return a runnable browser demo for the approved goal. Include all three separate fenced code blocks, exactly labeled ```html, ```css, and ```javascript. You may include one optional ```markdown block for README.md. Keep it self-contained with no external URLs, network calls, backend calls, repository edits, filesystem edits, server/workspace tests, or native workers. Add a short usage note outside the fences. The validated artifacts will be saved into the current browser task folder; do not assume they are applied anywhere else." },
       { role: "user", content: `Approved goal:\n${task.goal}\n\nApproved plan:\n${task.plan}` }
     ], "browser-demo");
     const demo = typhoonAnswer(data);
-    browserDemoFiles(demo);
+    const files = browserDemoFiles(demo);
     task.demo = demo;
-    task.status = "awaiting_apply";
-    addBrowserAgentEvent("demo_ready", "Runnable code cards ready; explicit Apply is required before IndexedDB write");
+    task.status = "applying";
+    addBrowserAgentEvent("demo_ready", "Model output validated; saving approved artifacts to the task folder");
     applyAgentTask(task);
-    showPlan(demo);
-    addTimeline("Browser demo ready", "ตรวจ code แล้ว · กด Apply to Workspace เพื่อเขียนลง IndexedDB", "ok");
-    log(`Browser demo ready · ${task.id}`, "ok");
-    els.currentTaskDetail.textContent = "Demo code พร้อมแล้ว — ตรวจ code แล้วกด Apply to Workspace";
+    const workspace = await getBrowserWorkspace();
+    task.workspaceFolder = task.workspaceFolder || workspace.taskFolderForId(task.id);
+    const revisions = await workspace.writeTaskFiles(task.id, files, { source: "browser-agent", taskId: task.id });
+    task.appliedFiles = revisions;
+    task.status = "awaiting_preview";
+    task.preview = null;
+    task.verification = null;
+    addBrowserAgentEvent("files_applied", "Validated code/document artifacts saved as revisioned IndexedDB records");
+    applyAgentTask(task);
+    addTimeline("Artifacts saved", `Saved ${files.length} file${files.length === 1 ? "" : "s"} inside ${task.workspaceFolder}`, "ok");
+    log(`Browser artifacts saved · ${task.id}`, "ok");
+    els.currentTaskDetail.textContent = `Artifacts saved in ${task.workspaceFolder} — open Preview and Run Preview`;
+    selectTab("plan");
   } catch (error) {
-    setAgentError(agentErrorMessage(error, "อนุมัติ execution ไม่สำเร็จ"));
+    setAgentError(agentErrorMessage(error, "Approve & Save Files ไม่สำเร็จ"));
     task.status = "failed";
     saveBrowserAgentTask();
     addTimeline("Demo generation failed", error.message, "bad");
@@ -816,47 +867,6 @@ async function approveAgentExecution() {
     els.currentTaskDetail.textContent = error.message;
     els.taskStatus.textContent = "Agent error";
     els.taskStatus.className = "pill bad";
-  } finally {
-    state.busy = false;
-    applyActionState();
-  }
-}
-
-async function applyAgentFiles() {
-  const task = state.agentTask;
-  if (!task?.id || task.status !== "awaiting_apply" || state.busy) return;
-  setAgentError("");
-  state.busy = true;
-  task.status = "applying";
-  saveBrowserAgentTask();
-  els.taskStatus.textContent = "กำลังเขียนไฟล์ใน IndexedDB";
-  els.taskStatus.className = "pill info";
-  addBrowserAgentEvent("apply_started", "Explicit Apply requested for browser workspace");
-  addTimeline("Apply started", "เขียน index.html, style.css และ app.js ลง IndexedDB", "working");
-  log(`Apply browser files to IndexedDB · ${task.id}`);
-  applyAgentTask(task);
-  try {
-    const files = browserDemoFiles(task.demo || "");
-    const workspace = await getBrowserWorkspace();
-    const revisions = await workspace.writeFiles(files, { source: "browser-agent", taskId: task.id });
-    task.appliedFiles = revisions;
-    task.status = "awaiting_preview";
-    task.preview = null;
-    task.verification = null;
-    addBrowserAgentEvent("files_applied", "Three approved demo files saved as revisioned IndexedDB records");
-    applyAgentTask(task);
-    addTimeline("Files applied", "IndexedDB revision created for index.html, style.css and app.js", "ok");
-    log(`Browser files applied · ${task.id}`, "ok");
-    els.currentTaskDetail.textContent = "ไฟล์ถูก Apply แล้ว — เปิด Preview และกด Run Preview";
-    selectTab("preview");
-  } catch (error) {
-    task.status = "failed";
-    task.error = error.message;
-    setAgentError(agentErrorMessage(error, "Apply เข้า Browser Workspace ไม่สำเร็จ"));
-    addBrowserAgentEvent("apply_failed", error.message);
-    addTimeline("Apply failed", error.message, "bad");
-    log(`Browser file apply failed · ${error.message}`, "bad");
-    applyAgentTask(task);
   } finally {
     state.busy = false;
     applyActionState();
@@ -883,19 +893,17 @@ async function verifyAgentTask() {
   try {
     const expectedFiles = browserDemoFiles(task.demo || "");
     const workspace = await getBrowserWorkspace();
-    const records = await workspace.readFiles(expectedFiles.map((file) => file.path));
-    const blocks = browserDemoBlocks(task.demo || "");
-    const languages = new Set(blocks.map((block) => block.language));
-    const cards = $$("#planBox .codeCard");
+    const records = await workspace.readTaskFiles(task.id, ["PLAN.md", ...expectedFiles.map((file) => file.name)]);
+    const planRecord = records[`${task.workspaceFolder}/PLAN.md`];
+    const artifactSummaryVisible = Boolean(els.artifactSummary && !els.artifactSummary.classList.contains("hidden"));
     const frame = els.previewCanvas?.querySelector("iframe");
-    const workspaceFiles = expectedFiles.every((file) => records[file.path]?.content === file.content);
+    const workspaceFiles = expectedFiles.every((file) => records[`${task.workspaceFolder}/${file.name}`]?.content === file.content);
     const previewLoaded = Boolean(workspacePreviewState?.loaded && frame?.getAttribute("sandbox") === "allow-scripts");
     const runtimeClean = previewLoaded && workspacePreviewState.runtimeErrors.length === 0;
     const checks = {
-      html_code_card: languages.has("html") && cards.some((card) => card.querySelector(".codeCardLanguage")?.textContent === "html"),
-      css_code_card: languages.has("css") && cards.some((card) => card.querySelector(".codeCardLanguage")?.textContent === "css"),
-      javascript_code_card: languages.has("javascript") && cards.some((card) => card.querySelector(".codeCardLanguage")?.textContent === "javascript"),
       workspace_files: workspaceFiles,
+      plan_persisted: Boolean(planRecord?.content && task.plan && planRecord.content.includes(task.plan)),
+      artifact_summary: artifactSummaryVisible,
       iframe_loaded: previewLoaded,
       runtime_clean: runtimeClean,
       sandbox_document: Boolean(frame?.srcdoc?.includes("Content-Security-Policy") && !String(frame?.getAttribute("sandbox") || "").includes("allow-same-origin"))
@@ -1017,6 +1025,13 @@ function composeWorkspaceDocument(files, token) {
 async function runWorkspacePreview() {
   if (state.busy) return;
   setAgentError("");
+  const task = state.agentTask;
+  if (!task?.id || !task.workspaceFolder) {
+    const error = new Error("Start a Browser Agent task before running its task-folder preview.");
+    if (els.previewStatus) els.previewStatus.textContent = error.message;
+    setAgentError(agentErrorMessage(error, "Run Preview ไม่สำเร็จ"));
+    return;
+  }
   if (els.previewStatus) els.previewStatus.textContent = "Reading revisioned IndexedDB files…";
   const workspace = await getBrowserWorkspace().catch((error) => {
     if (els.previewStatus) els.previewStatus.textContent = error.message;
@@ -1026,8 +1041,9 @@ async function runWorkspacePreview() {
   if (!workspace) return;
   let onMessage = null;
   try {
-    const records = await workspace.readFiles(["index.html", "style.css", "app.js"]);
-    const files = Object.fromEntries(Object.entries(records).map(([path, record]) => [path, record.content]));
+    workspace.setActiveTask(task.id);
+    const records = await workspace.readTaskFiles(task.id, ["index.html", "style.css", "app.js"]);
+    const files = Object.fromEntries(Object.entries(records).map(([path, record]) => [path.slice(path.lastIndexOf("/") + 1), record.content]));
     const token = previewToken();
     const iframe = document.createElement("iframe");
     iframe.className = "workspacePreviewFrame";
@@ -1051,7 +1067,7 @@ async function runWorkspacePreview() {
     await loaded;
     await new Promise((resolve) => setTimeout(resolve, 80));
     window.removeEventListener("message", onMessage);
-    workspacePreviewState = { loaded: true, runtimeErrors: runtimeErrors.slice(), token, versions: Object.fromEntries(Object.entries(records).map(([path, record]) => [path, record.version])), at: new Date().toISOString() };
+    workspacePreviewState = { loaded: true, runtimeErrors: runtimeErrors.slice(), token, versions: Object.fromEntries(Object.entries(records).map(([path, record]) => [path.slice(path.lastIndexOf("/") + 1), record.version])), folder: task.workspaceFolder, at: new Date().toISOString() };
     if (els.previewStatus) els.previewStatus.textContent = runtimeErrors.length ? `Loaded with ${runtimeErrors.length} runtime error${runtimeErrors.length === 1 ? "" : "s"}` : "Loaded · IndexedDB files · network blocked";
     if (state.agentTask?.appliedFiles) {
       state.agentTask.preview = { ...workspacePreviewState, ok: runtimeErrors.length === 0 };
@@ -1276,6 +1292,7 @@ function resetTask() {
   state.taskStart = null;
   state.agentTask = null;
   workspacePreviewState = null;
+  window.WebAiBrowserWorkspace?.setActiveTask?.(null);
   localStorage.removeItem(BROWSER_AGENT_STORAGE_KEY);
   if (previousTask && browserMemory?.supported?.()) browserMemory.saveTask(null).catch(() => {});
   setAgentError("");
@@ -1290,7 +1307,7 @@ function resetTask() {
   els.gateBadge.textContent = "WAITING";
   els.gateBadge.className = "gateBadge waiting";
   els.gateMessage.textContent = "เริ่ม Verification หลังมี Task run จริง";
-  if (els.previewCanvas) els.previewCanvas.innerHTML = '<div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>กด Apply to Workspace แล้ว Run Preview เพื่อรันไฟล์ใน sandbox</small></div>';
+  if (els.previewCanvas) els.previewCanvas.innerHTML = '<div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>หลัง Approve ระบบจะบันทึกไฟล์ลงโฟลเดอร์ task แล้วกด Run Preview เพื่อรันใน sandbox</small></div>';
   if (els.previewStatus) els.previewStatus.textContent = "อ่านจาก IndexedDB เมื่อกด Run Preview";
   updateAgentActions();
 }
@@ -1301,9 +1318,14 @@ els.commandBtn.addEventListener("click", openPalette); els.palette.addEventListe
 document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); } if (e.key === "Escape") { closeDrawer(); closePalette(); } if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !els.run.disabled) runTask(); });
 $$('[data-command]').forEach((btn) => btn.addEventListener("click", () => { const cmd = btn.dataset.command; closePalette(); if (cmd === "new-task") { document.querySelector("#home")?.scrollIntoView({ behavior: "smooth" }); setTimeout(() => els.input.focus(), 250); } if (cmd === "connect") openDrawer(); if (cmd === "workspace") document.querySelector("#workspace")?.scrollIntoView({ behavior: "smooth" }); if (cmd === "roadmap") location.href = "./roadmap.html"; }));
 $$('.promptChip').forEach((btn) => btn.addEventListener("click", () => { els.input.value = btn.dataset.prompt || ""; els.input.focus(); applyActionState(); }));
-  els.input.addEventListener("input", applyActionState); els.mode.addEventListener("change", applyActionState); els.run.addEventListener("click", runTask); els.approveExecution.addEventListener("click", approveAgentExecution); els.applyAgentFiles.addEventListener("click", applyAgentFiles); els.runWorkspacePreview.addEventListener("click", runWorkspacePreview); els.verifyTask.addEventListener("click", verifyAgentTask); els.clearTask.addEventListener("click", resetTask); els.clearTimeline.addEventListener("click", () => { els.timeline.innerHTML = '<div class="emptyState compact"><span>◎</span><b>ยังไม่มีเหตุการณ์</b><small>Timeline จะอัปเดตเมื่อเริ่ม Task</small></div>'; }); els.clearLog.addEventListener("click", () => { els.log.innerHTML = '<div class="emptyLog">ยังไม่มี event · ระบบจะแสดง metadata โดยไม่ log secret</div>'; });
+els.input.addEventListener("input", applyActionState); els.mode.addEventListener("change", applyActionState); els.run.addEventListener("click", runTask); els.approveExecution.addEventListener("click", approveAgentExecution); els.runWorkspacePreview.addEventListener("click", runWorkspacePreview); els.verifyTask.addEventListener("click", verifyAgentTask); els.clearTask.addEventListener("click", resetTask); els.clearTimeline.addEventListener("click", () => { els.timeline.innerHTML = '<div class="emptyState compact"><span>◎</span><b>ยังไม่มีเหตุการณ์</b><small>Timeline จะอัปเดตเมื่อเริ่ม Task</small></div>'; }); els.clearLog.addEventListener("click", () => { els.log.innerHTML = '<div class="emptyLog">ยังไม่มี event · ระบบจะแสดง metadata โดยไม่ log secret</div>'; });
 $$('.tabBtn').forEach((btn) => btn.addEventListener("click", () => selectTab(btn.dataset.tab)));
 $$('.deviceSwitch button').forEach((btn) => btn.addEventListener("click", () => { $$('.deviceSwitch button').forEach((b) => b.classList.toggle("active", b === btn)); }));
+const syncBrowserWorkspaceTask = () => {
+  if (state.agentTask?.id) window.WebAiBrowserWorkspace?.setActiveTask?.(state.agentTask.id);
+};
+if (window.WebAiBrowserWorkspace) syncBrowserWorkspaceTask();
+else window.addEventListener("webai:workspace-ready", syncBrowserWorkspaceTask, { once: true });
 if (state.agentTask) {
   applyAgentTask(state.agentTask);
   state.taskStart = state.agentTask.startedAt || null;
