@@ -37,6 +37,8 @@ jobs:
           node --check scripts/browser-memory-smoke.mjs
           node --check scripts/core-smoke.mjs
           node --check scripts/agent-smoke.mjs
+          node --check scripts/browser-agent-contract.mjs
+          node --check scripts/cache-bust.mjs
           node --check scripts/native-worker-smoke.mjs
           node --check scripts/diff-evidence-smoke.mjs
           node --check scripts/snapshot-smoke.mjs

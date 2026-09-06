@@ -29,6 +29,9 @@ jobs:
         with:
           enablement: true
 
+      - name: Cache-bust frontend assets
+        run: node scripts/cache-bust.mjs "$GITHUB_SHA"
+
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
         with:

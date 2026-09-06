@@ -2,8 +2,11 @@
   "use strict";
 
   const DB_NAME = "webai-browser-workspace";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE_NAME = "items";
+  const REVISION_STORE_NAME = "revisions";
+  const MAX_FILE_BYTES = 100_000;
+  const MAX_FILES_PER_WRITE = 12;
   const root = document.querySelector("#fileWorkspace");
   if (!root) return;
 
@@ -26,6 +29,7 @@
   let items = [];
   let selectedPath = null;
   let selectedFolder = "";
+  const listeners = new Set();
 
   class WorkspacePathError extends Error {
     constructor(message) {
@@ -62,6 +66,10 @@
     return normalized;
   }
 
+  function byteLength(value) {
+    return new TextEncoder().encode(value).byteLength;
+  }
+
   function parentPath(path) {
     const index = path.lastIndexOf("/");
     return index < 0 ? "" : path.slice(0, index);
@@ -79,8 +87,15 @@
       }
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
-        const store = request.result.createObjectStore(STORE_NAME, { keyPath: "path" });
-        store.createIndex("parent", "parent", { unique: false });
+        const database = request.result;
+        const store = database.objectStoreNames.contains(STORE_NAME)
+          ? request.transaction.objectStore(STORE_NAME)
+          : database.createObjectStore(STORE_NAME, { keyPath: "path" });
+        if (!store.indexNames.contains("parent")) store.createIndex("parent", "parent", { unique: false });
+        if (!database.objectStoreNames.contains(REVISION_STORE_NAME)) {
+          const revisions = database.createObjectStore(REVISION_STORE_NAME, { keyPath: ["path", "version"] });
+          revisions.createIndex("path", "path", { unique: false });
+        }
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error("Could not open the browser workspace."));
@@ -105,6 +120,12 @@
       request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error || new Error("Could not read the workspace."));
     });
+  }
+
+  function notify(change) {
+    for (const listener of listeners) {
+      try { listener(change); } catch { /* UI listeners must not break storage. */ }
+    }
   }
 
   function itemAt(path) { return items.find((item) => item.path === path) || null; }
@@ -196,10 +217,11 @@
     catch (error) { setStatus(error.message, "error"); return; }
     if (itemAt(path)) { setStatus("That workspace path already exists.", "error"); return; }
     const now = Date.now();
-    await transaction("readwrite", (store) => store.add({ path, parent: parentPath(path), name: baseName(path), type, content: type === "file" ? "" : null, createdAt: now, updatedAt: now }));
+    await transaction("readwrite", (store) => store.add({ path, parent: parentPath(path), name: baseName(path), type, content: type === "file" ? "" : null, version: 1, createdAt: now, updatedAt: now }));
     selectedFolder = type === "folder" ? path : parentPath(path);
     selectedPath = type === "file" ? path : null;
     await refresh();
+    notify({ type: "created", paths: [path] });
     setStatus(`${type === "folder" ? "Folder" : "File"} created`, "success");
   }
 
@@ -207,8 +229,11 @@
     const item = selectedPath ? itemAt(selectedPath) : null;
     if (!item || item.type !== "file") return;
     const content = els.input.value;
-    await transaction("readwrite", (store) => store.put({ ...item, content, updatedAt: Date.now() }));
+    if (byteLength(content) > MAX_FILE_BYTES) throw new Error(`File is larger than ${MAX_FILE_BYTES.toLocaleString()} bytes.`);
+    const version = (Number(item.version) || 0) + 1;
+    await transaction("readwrite", (store) => store.put({ ...item, content, version, updatedAt: Date.now() }));
     await refresh();
+    notify({ type: "saved", paths: [item.path], version });
     setStatus("File saved locally", "success");
   }
 
@@ -225,6 +250,7 @@
     selectedPath = null;
     selectedFolder = parentPath(item.path);
     await refresh();
+    notify({ type: "deleted", paths: [item.path, ...descendants.map((candidate) => candidate.path)] });
     setStatus("Item deleted", "success");
   }
 
@@ -233,6 +259,70 @@
     els.newFile.disabled = true;
     els.save.disabled = true;
     els.delete.disabled = true;
+  }
+
+  async function writeFiles(files, metadata = {}) {
+    if (!Array.isArray(files) || files.length < 1 || files.length > MAX_FILES_PER_WRITE) throw new Error("Invalid workspace file batch.");
+    if (!db) await ready;
+    const records = files.map((file) => {
+      const path = normalizePath(file?.path);
+      const content = typeof file?.content === "string" ? file.content : "";
+      if (byteLength(content) > MAX_FILE_BYTES) throw new Error(`${path} is larger than ${MAX_FILE_BYTES.toLocaleString()} bytes.`);
+      return { path, content };
+    });
+    const now = Date.now();
+    const taskId = typeof metadata.taskId === "string" ? metadata.taskId.slice(0, 80) : "";
+    const source = typeof metadata.source === "string" ? metadata.source.slice(0, 40) : "browser-agent";
+    const versions = records.map(({ path }) => (Number(itemAt(path)?.version) || 0) + 1);
+    await new Promise((resolve, reject) => {
+      const request = db.transaction([STORE_NAME, REVISION_STORE_NAME], "readwrite");
+      const itemsStore = request.objectStore(STORE_NAME);
+      const revisionsStore = request.objectStore(REVISION_STORE_NAME);
+      records.forEach(({ path, content }, index) => {
+        const current = itemAt(path);
+        const version = versions[index];
+        itemsStore.put({
+          ...(current || {}), path, parent: parentPath(path), name: baseName(path), type: "file", content,
+          version, source, taskId, createdAt: current?.createdAt || now, updatedAt: now
+        });
+        revisionsStore.put({ path, version, content, source, taskId, createdAt: now });
+      });
+      request.oncomplete = resolve;
+      request.onerror = () => reject(request.error || new Error("Workspace storage failed."));
+      request.onabort = () => reject(request.error || new Error("Workspace storage was aborted."));
+    });
+    await refresh();
+    selectedFolder = "";
+    selectedPath = records[0].path;
+    renderTree();
+    renderEditor();
+    notify({ type: "applied", paths: records.map((record) => record.path), versions: versions.slice(), source, taskId });
+    setStatus(`Applied ${records.length} file${records.length === 1 ? "" : "s"} · revisioned locally`, "success");
+    return records.map(({ path }, index) => ({ path, version: versions[index] }));
+  }
+
+  async function readFiles(paths) {
+    if (!Array.isArray(paths)) throw new Error("Workspace paths must be an array.");
+    if (!db) await ready;
+    const result = {};
+    for (const rawPath of paths) {
+      const path = normalizePath(rawPath);
+      const item = itemAt(path);
+      if (!item || item.type !== "file") throw new Error(`Workspace file not found: ${path}`);
+      result[path] = { path, content: item.content || "", version: Number(item.version) || 1, updatedAt: item.updatedAt || null };
+    }
+    return result;
+  }
+
+  async function listFiles() {
+    if (!db) await ready;
+    return items.filter((item) => item.type === "file").map((item) => ({ path: item.path, content: item.content || "", version: Number(item.version) || 1, updatedAt: item.updatedAt || null }));
+  }
+
+  function subscribe(listener) {
+    if (typeof listener !== "function") return () => {};
+    listeners.add(listener);
+    return () => listeners.delete(listener);
   }
 
   els.newFolder.addEventListener("click", () => createItem("folder").catch((error) => setStatus(error.message, "error")));
@@ -246,7 +336,7 @@
     }
   });
 
-  (async () => {
+  const ready = (async () => {
     try {
       db = await openDatabase();
       await refresh();
@@ -258,6 +348,11 @@
       setStatus(error.message, "error");
       els.treeEmpty.hidden = false;
       els.treeEmpty.querySelector("small").textContent = "Enable IndexedDB to use this local workspace.";
+      throw error;
     }
   })();
+  ready.catch(() => {});
+
+  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, listFiles, subscribe, maxFileBytes: MAX_FILE_BYTES };
+  window.dispatchEvent(new CustomEvent("webai:workspace-ready"));
 })();
