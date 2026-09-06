@@ -13,6 +13,7 @@
     "agent-smoke": "node scripts/agent-smoke.mjs",
     "native-worker-smoke": "node scripts/native-worker-smoke.mjs",
     "snapshot-smoke": "node scripts/snapshot-smoke.mjs",
-    "test": "node scripts/smoke.mjs && node scripts/agent-smoke.mjs && node scripts/native-worker-smoke.mjs && node scripts/snapshot-smoke.mjs && node scripts/core-smoke.mjs"
+    "recovery-smoke": "node scripts/recovery-smoke.mjs",
+    "test": "node scripts/smoke.mjs && node scripts/agent-smoke.mjs && node scripts/native-worker-smoke.mjs && node scripts/snapshot-smoke.mjs && node scripts/recovery-smoke.mjs && node scripts/core-smoke.mjs"
   }
 }
