@@ -14,7 +14,7 @@
       load("./browserpod-storage-lock-fix.js", () => {
         Promise.resolve(window.WebAiBrowserPodPatchReady)
           .catch(() => {})
-          .finally(() => load("./browser-linux-worker.js"));
+          .finally(() => load("./browser-linux-worker-v03.js"));
       });
     });
   });
