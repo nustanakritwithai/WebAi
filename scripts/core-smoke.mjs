@@ -69,6 +69,24 @@ async function openSession(clientId, token = pairingToken) {
   return { response, data: await response.json() };
 }
 
+async function createBootstrap(clientId, token = pairingToken) {
+  const response = await fetch(`http://127.0.0.1:${corePort}/api/bootstrap`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "https://nustanakritwithai.github.io" },
+    body: JSON.stringify({ pairingToken: token, clientId }),
+  });
+  return { response, data: await response.json() };
+}
+
+async function exchangeBootstrap(code, clientId) {
+  const response = await fetch(`http://127.0.0.1:${corePort}/api/session/bootstrap`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "https://nustanakritwithai.github.io" },
+    body: JSON.stringify({ code, clientId }),
+  });
+  return { response, data: await response.json() };
+}
+
 async function coreRequest(path, sessionToken, method = "GET", body) {
   const headers = { "Content-Type": "application/json", "x-webai-session": sessionToken, Origin: "https://nustanakritwithai.github.io" };
   const response = await fetch(`http://127.0.0.1:${corePort}${path}`, {
@@ -90,6 +108,19 @@ try {
 
   const denied = await openSession("client_owner_000000000001", "wrong-token");
   if (denied.response.status !== 401 || denied.data.error !== "pairing_denied") throw new Error("pairing token rejection failed");
+
+  const bootstrapDenied = await createBootstrap("client_bootstrap_00001", "wrong-token");
+  if (bootstrapDenied.response.status !== 401 || bootstrapDenied.data.error !== "pairing_denied") throw new Error("bootstrap pairing rejection failed");
+  const bootstrap = await createBootstrap("client_bootstrap_00001");
+  if (bootstrap.response.status !== 201 || !bootstrap.data.code || !bootstrap.data.expiresAt || JSON.stringify(bootstrap.data).includes(pairingToken)) {
+    throw new Error("bootstrap creation failed or leaked pairing token");
+  }
+  const bootstrapWrongClient = await exchangeBootstrap(bootstrap.data.code, "client_bootstrap_00002");
+  if (bootstrapWrongClient.response.status !== 401 || bootstrapWrongClient.data.error !== "bootstrap_denied") throw new Error("bootstrap owner binding failed");
+  const bootstrapSession = await exchangeBootstrap(bootstrap.data.code, "client_bootstrap_00001");
+  if (bootstrapSession.response.status !== 201 || !bootstrapSession.data.sessionToken) throw new Error("bootstrap exchange failed");
+  const bootstrapReuse = await exchangeBootstrap(bootstrap.data.code, "client_bootstrap_00001");
+  if (bootstrapReuse.response.status !== 401 || bootstrapReuse.data.error !== "bootstrap_denied") throw new Error("bootstrap was reusable");
 
   const ownerA = await openSession("client_owner_000000000001");
   if (ownerA.response.status !== 201 || !ownerA.data.sessionToken) throw new Error("owner A session failed");
@@ -116,7 +147,7 @@ try {
   const listedB = await coreRequest("/api/tasks", ownerB.data.sessionToken);
   if (listedA.data.tasks?.length !== 1 || listedB.data.tasks?.length !== 0) throw new Error("owner-scoped task listing failed");
 
-  console.log("CORE SMOKE PASS: signed sessions, owner isolation, proxy planning, native worker, verification");
+  console.log("CORE SMOKE PASS: signed sessions, one-time bootstrap, owner isolation, proxy planning, native worker, verification");
 } finally {
   core.kill("SIGTERM");
   await new Promise((resolve) => fakeProxy.close(resolve));

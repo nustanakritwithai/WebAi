@@ -34,6 +34,36 @@
     } catch {}
   }
 
+  function bootstrapParameters() {
+    const values = new URLSearchParams(location.hash.startsWith("#") ? location.hash.slice(1) : "");
+    const code = values.get("coreBootstrap") || "";
+    const client = values.get("coreClient") || "";
+    const base = values.get("coreBase") || "";
+    if (!code || !/^[A-Za-z0-9_-]{16,80}$/.test(client) || base !== "https://157.85.96.139:5445") return null;
+    return { code, client, base };
+  }
+
+  async function consumeBootstrap() {
+    const bootstrap = bootstrapParameters();
+    if (!bootstrap) return false;
+    history.replaceState(null, "", `${location.pathname}${location.search}`);
+    localStorage.setItem(CORE_BASE_KEY, bootstrap.base);
+    localStorage.setItem(CORE_CLIENT_KEY, bootstrap.client);
+    clearSession();
+    const response = await fetch(`${bootstrap.base}/api/session/bootstrap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: bootstrap.code, clientId: bootstrap.client }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.sessionToken || !data.expiresAt) throw new Error(data.error || "bootstrap_failed");
+    localStorage.setItem(CORE_SESSION_KEY, data.sessionToken);
+    localStorage.setItem(CORE_SESSION_EXP_KEY, data.expiresAt);
+    if ($("#coreBase")) $("#coreBase").value = bootstrap.base;
+    await refreshCoreHealth();
+    return true;
+  }
+
   function ensureTeam(name, id) {
     let row = [...document.querySelectorAll(".teamGrid > div")]
       .find((item) => item.querySelector("b")?.textContent?.trim() === name);
@@ -251,7 +281,7 @@
   installCoreOverview();
   installCoreConnectionUi();
   installRequestBridge();
-  setTimeout(() => refreshCoreHealth().catch(() => {}), 700);
+  consumeBootstrap().catch(() => {}).finally(() => setTimeout(() => refreshCoreHealth().catch(() => {}), 700));
   setInterval(() => refreshCoreHealth().catch(() => {}), 30_000);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refreshCoreHealth().catch(() => {});
@@ -262,6 +292,7 @@
     connect: connectCore,
     exchangeSession,
     clearSession,
+    consumeBootstrap,
     isTaskReady: () => Boolean(coreBase()) && sessionValid(),
     request: coreTaskRequest,
   };
