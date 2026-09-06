@@ -24,15 +24,18 @@ jobs:
           node --check server/agent.mjs
           node --check server/native-worker.mjs
           node --check server/snapshot-store.mjs
+          node --check server/diff-evidence.mjs
           node --check app.js
           node --check app-core.js
           node --check capability-bridge.js
           node --check core-bridge.js
           node --check core-mode.js
+          node --check diff-evidence.js
           node --check scripts/smoke.mjs
           node --check scripts/core-smoke.mjs
           node --check scripts/agent-smoke.mjs
           node --check scripts/native-worker-smoke.mjs
+          node --check scripts/diff-evidence-smoke.mjs
           node --check scripts/snapshot-smoke.mjs
           node --check scripts/recovery-smoke.mjs
       - name: Secret proxy contract
@@ -83,7 +86,19 @@ jobs:
           grep -q 'execution_recovery_conflict' server/core-recovery.mjs
           grep -q 'validateApplied' server/snapshot-store.mjs
           grep -q 'restoreCaptured' server/snapshot-store.mjs
+          grep -q 'diffExact' server/core-recovery.mjs
           ! grep -q 'TYPHOON_API_KEY' server/core-recovery.mjs
+      - name: Diff evidence contract
+        run: |
+          grep -q 'createDiffEvidence' server/diff-evidence.mjs
+          grep -q 'MAX_MYERS_WORK' server/diff-evidence.mjs
+          grep -q 'bounded-replacement' server/diff-evidence.mjs
+          grep -q 'createDiffEvidence' server/snapshot-store.mjs
+          grep -q 'additions' server/snapshot-store.mjs
+          grep -q 'deletions' server/snapshot-store.mjs
+          grep -q 'diffExact' server/snapshot-store.mjs
+          grep -q 'diffKind' server/agent.mjs
+          ! grep -q 'TYPHOON_API_KEY' server/diff-evidence.mjs
       - name: Snapshot foundation contract
         run: |
           grep -q 'createSnapshotStore' server/snapshot-store.mjs
@@ -98,6 +113,7 @@ jobs:
           grep -q 'executionTarget = "webai-native"' app.js
           grep -q 'core-bridge.js' app.js
           grep -q 'core-mode.js' app.js
+          grep -q 'diff-evidence.js' app.js
           ! grep -q 'native-core-ui.js' app.js
           grep -q 'webai.coreBase' core-bridge.js
           grep -q 'x-webai-session' core-bridge.js
@@ -107,6 +123,11 @@ jobs:
           grep -q 'rollbackTaskBtn' core-mode.js
           grep -q '/rollback' core-mode.js
           grep -q 'Native Worker' core-mode.js
+          grep -q 'diffEvidenceList' diff-evidence.js
+          grep -q 'BEFORE SHA-256' diff-evidence.js
+          grep -q 'AFTER SHA-256' diff-evidence.js
+          grep -q 'Exact line diff' diff-evidence.js
+          ! grep -q 'innerHTML' diff-evidence.js
           ! grep -qi 'browserpod' app.js
           ! grep -qi 'browser-linux' app.js
       - name: Test suite
