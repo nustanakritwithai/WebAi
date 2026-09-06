@@ -270,7 +270,7 @@ async function applyManifest(root, manifest) {
 export function createNativeWorker({ workspace, requestModel }) {
   if (typeof requestModel !== "function") throw new TypeError("requestModel must be a function");
 
-  async function run(prompt) {
+  async function prepare(prompt) {
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > MAX_PROMPT_CHARS) {
       throw httpError("native_invalid_prompt", 400);
     }
@@ -292,18 +292,33 @@ export function createNativeWorker({ workspace, requestModel }) {
       max_tokens: 4096,
     });
 
-    const manifest = parseManifest(response?.choices?.[0]?.message?.content);
-    const changedFiles = await applyManifest(root, manifest);
+    return {
+      root,
+      manifest: parseManifest(response?.choices?.[0]?.message?.content),
+    };
+  }
+
+  async function apply(prepared) {
+    if (!prepared || typeof prepared !== "object" || typeof prepared.root !== "string" || !prepared.manifest?.files?.length) {
+      throw httpError("native_prepared_manifest_invalid", 500);
+    }
+    const changedFiles = await applyManifest(prepared.root, prepared.manifest);
     return {
       ok: true,
       worker: "webai-native-v0.1",
-      content: manifest.summary,
+      content: prepared.manifest.summary,
       changedFiles,
     };
   }
 
+  async function run(prompt) {
+    return apply(await prepare(prompt));
+  }
+
   return {
     run,
+    prepare,
+    apply,
     status: async () => {
       try {
         const root = await workspaceRoot(workspace);
