@@ -193,7 +193,6 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
       task.worker = {
         completedAt: now(),
         worker: boundedText(result?.worker || workerName, 100),
-        summary: boundedText(result?.content, 1_200),
         changedFiles: normalizeChangedFiles(result?.changedFiles),
         outputCaptured: typeof result?.content === "string" && result.content.length > 0,
       };
