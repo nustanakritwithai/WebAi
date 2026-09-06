@@ -1,9 +1,5 @@
 import http from "node:http";
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { URL } from "node:url";
-import { createAgentService } from "./agent.mjs";
 
 const PORT = Number(process.env.PORT || "8787");
 const DEFAULT_BASE_URL = "https://api.opentyphoon.ai/v1";
@@ -13,18 +9,10 @@ const MAX_MESSAGES = 40;
 const MAX_CONTENT_CHARS = 12_000;
 const REQUESTS_PER_MINUTE = 30;
 const UPSTREAM_TIMEOUT_MS = 60_000;
-const VERIFICATION_TIMEOUT_MS = 180_000;
-const VERIFICATION_OUTPUT_CHARS = 12_000;
 const buckets = new Map();
 
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65_535) {
   throw new Error("PORT must be an integer between 1 and 65535");
-}
-
-function envBool(name, fallback = false) {
-  const value = process.env[name];
-  if (value == null || value === "") return fallback;
-  return /^(1|true|yes|on)$/i.test(value);
 }
 
 function configuredBaseUrl() {
@@ -45,20 +33,6 @@ const TYPHOON_BASE_URL = configuredBaseUrl();
 const TYPHOON_MODEL = process.env.TYPHOON_MODEL || DEFAULT_MODEL;
 const TYPHOON_API_KEY = process.env.TYPHOON_API_KEY || "";
 const WEB_AUTH_TOKEN = process.env.WEB_AUTH_TOKEN || "";
-const WEBAI_WORKSPACE = process.env.WEBAI_WORKSPACE || "";
-const WEBAI_NATIVE_WORKER_ENABLED = envBool("WEBAI_NATIVE_WORKER_ENABLED");
-const AGENT_STATE_PATH = process.env.AGENT_STATE_PATH || resolve(process.cwd(), ".webai", "agent-state.json");
-
-const ECC_ENABLED = envBool("ECC_ENABLED");
-const ECC_ROOT = process.env.ECC_ROOT || "";
-const HERMES_ENABLED = envBool("HERMES_ENABLED");
-const HERMES_HOME = process.env.HERMES_HOME || "";
-const OPENCLAW_ENABLED = envBool("OPENCLAW_ENABLED");
-const OPENCLAW_URL = process.env.OPENCLAW_URL || "";
-const HARPOON_ENABLED = envBool("HARPOON_ENABLED");
-const HARPOON_URL = process.env.HARPOON_URL || "";
-const PREVIEW_ENABLED = envBool("PREVIEW_ENABLED");
-const PREVIEW_BASE_URL = process.env.PREVIEW_BASE_URL || "";
 
 const SAFE_ORIGINS = new Set(["https://nustanakritwithai.github.io"]);
 const configuredOrigins = (process.env.ALLOWED_ORIGINS || "https://nustanakritwithai.github.io")
@@ -83,18 +57,10 @@ for (const origin of configuredOrigins) {
 function allowedOrigin(origin) {
   if (!origin) return true;
   const normalized = origin.replace(/\/$/, "");
-  if (configuredOrigins.includes(normalized)) {
-    if (SAFE_ORIGINS.has(normalized)) return true;
-    try {
-      const url = new URL(normalized);
-      return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-        && ["http:", "https:"].includes(url.protocol);
-    } catch {
-      return false;
-    }
-  }
+  if (!configuredOrigins.includes(normalized)) return false;
+  if (SAFE_ORIGINS.has(normalized)) return true;
   try {
-    const url = new URL(origin);
+    const url = new URL(normalized);
     return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
       && ["http:", "https:"].includes(url.protocol);
   } catch {
@@ -208,10 +174,10 @@ async function requestTyphoon(chat) {
       body: JSON.stringify({ model: TYPHOON_MODEL, ...chat }),
       signal: controller.signal,
     });
-    const responseText = await upstream.text();
-    let responseJson;
+    const text = await upstream.text();
+    let json;
     try {
-      responseJson = JSON.parse(responseText);
+      json = JSON.parse(text);
     } catch {
       throw Object.assign(new Error("invalid_upstream_response"), { status: 502 });
     }
@@ -222,7 +188,7 @@ async function requestTyphoon(chat) {
         : {};
       throw Object.assign(new Error("upstream_error"), { status, retryAfter });
     }
-    return responseJson;
+    return json;
   } catch (error) {
     if (error?.name === "AbortError") throw Object.assign(new Error("upstream_timeout"), { status: 504 });
     throw error;
@@ -230,112 +196,6 @@ async function requestTyphoon(chat) {
     clearTimeout(timeout);
   }
 }
-
-function workspaceConfigured() {
-  return Boolean(WEBAI_WORKSPACE) && existsSync(WEBAI_WORKSPACE);
-}
-
-function capabilityRegistry() {
-  const workspaceReady = workspaceConfigured();
-  const nativeReady = WEBAI_NATIVE_WORKER_ENABLED && workspaceReady;
-  return {
-    typhoon: {
-      enabled: true,
-      configured: Boolean(TYPHOON_API_KEY),
-      model: TYPHOON_MODEL,
-    },
-    webaiCore: {
-      enabled: true,
-      configured: Boolean(TYPHOON_API_KEY),
-      lifecycle: "supervised",
-    },
-    nativeWorker: {
-      enabled: WEBAI_NATIVE_WORKER_ENABLED,
-      configured: nativeReady,
-      mode: "guarded-file-worker",
-    },
-    ecc: {
-      enabled: ECC_ENABLED,
-      configured: ECC_ENABLED && Boolean(ECC_ROOT),
-    },
-    hermes: {
-      enabled: HERMES_ENABLED,
-      configured: HERMES_ENABLED && Boolean(HERMES_HOME),
-    },
-    openclaw: {
-      enabled: OPENCLAW_ENABLED,
-      configured: OPENCLAW_ENABLED && Boolean(OPENCLAW_URL),
-    },
-    harpoon: {
-      enabled: HARPOON_ENABLED,
-      configured: HARPOON_ENABLED && Boolean(HARPOON_URL),
-    },
-    preview: {
-      enabled: PREVIEW_ENABLED,
-      configured: PREVIEW_ENABLED && Boolean(PREVIEW_BASE_URL),
-    },
-  };
-}
-
-function safeChildEnvironment() {
-  const allowedNames = ["PATH", "PATHEXT", "SYSTEMROOT", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"];
-  return Object.fromEntries(allowedNames
-    .filter((name) => typeof process.env[name] === "string" && process.env[name])
-    .map((name) => [name, process.env[name]]));
-}
-
-async function unavailableLegacyWorker() {
-  throw Object.assign(new Error("native_worker_disabled"), { status: 503 });
-}
-
-function runVerification() {
-  if (!workspaceConfigured()) {
-    throw Object.assign(new Error("workspace_not_configured"), { status: 503 });
-  }
-
-  return new Promise((resolveResult, reject) => {
-    const command = process.platform === "win32" ? "npm.cmd" : "npm";
-    const child = spawn(command, ["test"], {
-      cwd: WEBAI_WORKSPACE,
-      env: safeChildEnvironment(),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let output = "";
-    let settled = false;
-    const append = (chunk) => {
-      if (output.length < VERIFICATION_OUTPUT_CHARS) output += String(chunk).slice(0, VERIFICATION_OUTPUT_CHARS - output.length);
-    };
-    const finishError = (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      reject(error);
-    };
-    const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
-      finishError(Object.assign(new Error("verification_timeout"), { status: 504 }));
-    }, VERIFICATION_TIMEOUT_MS);
-
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", append);
-    child.stderr.on("data", append);
-    child.on("error", () => finishError(Object.assign(new Error("verification_spawn_failed"), { status: 503 })));
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      resolveResult({ ok: code === 0, command: "npm test", exitCode: code, output });
-    });
-  });
-}
-
-const agentService = createAgentService({
-  requestModel: requestTyphoon,
-  runWorker: unavailableLegacyWorker,
-  runVerification,
-  statePath: AGENT_STATE_PATH,
-});
 
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin;
@@ -350,26 +210,24 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://localhost");
 
   if (req.method === "GET" && url.pathname === "/api/health") {
-    const capabilities = capabilityRegistry();
     return send(req, res, 200, {
       ok: true,
-      version: "0.4.0",
+      service: "webai-typhoon-proxy",
+      version: "0.5.0",
       provider: "opentyphoon",
       model: TYPHOON_MODEL,
-      keyConfigured: capabilities.typhoon.configured,
-      typhoonConfigured: capabilities.typhoon.configured,
-      workspaceConfigured: workspaceConfigured(),
-      nativeWorkerEnabled: capabilities.nativeWorker.enabled,
-      nativeWorkerConfigured: capabilities.nativeWorker.configured,
+      keyConfigured: Boolean(TYPHOON_API_KEY),
+      typhoonConfigured: Boolean(TYPHOON_API_KEY),
       authEnabled: Boolean(WEB_AUTH_TOKEN),
-      core: agentService.status(),
-      agent: agentService.status(),
-      capabilities,
+      capabilities: {
+        typhoon: { enabled: true, configured: Boolean(TYPHOON_API_KEY), model: TYPHOON_MODEL },
+        secretProxy: { enabled: true, configured: Boolean(TYPHOON_API_KEY) },
+      },
     });
   }
 
   if (req.method === "GET" && url.pathname === "/") {
-    return send(req, res, 200, { name: "WebAi Core API", version: "0.4.0", health: "/api/health" });
+    return send(req, res, 200, { name: "WebAi OpenTyphoon Secret Proxy", version: "0.5.0", health: "/api/health" });
   }
 
   if (!withinRateLimit(req)) {
@@ -384,13 +242,11 @@ const server = http.createServer(async (req, res) => {
       if (req.headers.authorization || req.headers["x-api-key"]) {
         return send(req, res, 400, { error: "client_authorization_not_allowed" });
       }
-      const chat = validateChat(await readJson(req));
-      return send(req, res, 200, await requestTyphoon(chat));
+      return send(req, res, 200, await requestTyphoon(validateChat(await readJson(req))));
     }
 
     if (req.method === "POST" && url.pathname === "/api/chat") {
-      const chat = validateChat(await readJson(req));
-      const raw = await requestTyphoon(chat);
+      const raw = await requestTyphoon(validateChat(await readJson(req)));
       return send(req, res, 200, {
         provider: "opentyphoon",
         model: raw.model || TYPHOON_MODEL,
@@ -401,7 +257,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/plan") {
       const body = await readJson(req);
-      const goal = String(body.goal || "").trim();
+      const goal = typeof body?.goal === "string" ? body.goal.trim() : "";
       if (!goal) return send(req, res, 400, { error: "goal_required" });
       const raw = await requestTyphoon({
         messages: [
@@ -418,34 +274,9 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    const isTaskCollection = url.pathname === "/api/tasks" || url.pathname === "/api/agent/tasks";
-    const taskMatch = url.pathname.match(/^\/api\/(?:agent\/)?tasks\/([^/]+)(?:\/(approve|verify))?$/);
-    if (isTaskCollection && req.method === "POST") {
-      const task = await agentService.createTask(await readJson(req));
-      return send(req, res, 201, { task });
-    }
-    if (isTaskCollection && req.method === "GET") {
-      return send(req, res, 200, { tasks: agentService.listTasks() });
-    }
-    if (taskMatch) {
-      const taskId = decodeURIComponent(taskMatch[1]);
-      const action = taskMatch[2];
-      if (req.method === "GET" && !action) {
-        return send(req, res, 200, { task: agentService.getTask(taskId) });
-      }
-      if (req.method === "POST" && action === "approve") {
-        return send(req, res, 200, { task: await agentService.approveAndExecute(taskId) });
-      }
-      if (req.method === "POST" && action === "verify") {
-        return send(req, res, 200, { task: await agentService.verify(taskId) });
-      }
-      return send(req, res, 405, { error: "method_not_allowed" }, { Allow: "GET, POST, OPTIONS" });
-    }
-
-    if (url.pathname === "/api/typhoon/chat" || url.pathname === "/api/chat" || url.pathname === "/api/plan" || isTaskCollection) {
+    if (["/api/typhoon/chat", "/api/chat", "/api/plan"].includes(url.pathname)) {
       return send(req, res, 405, { error: "method_not_allowed" }, { Allow: "POST, OPTIONS" });
     }
-
     return send(req, res, 404, { error: "not_found" });
   } catch (error) {
     const status = Number(error?.status) || (error?.name === "AbortError" ? 504 : 502);
@@ -454,7 +285,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  const caps = capabilityRegistry();
-  console.log(`WebAi Core API listening on 127.0.0.1:${PORT}`);
-  console.log(`Typhoon configured: ${caps.typhoon.configured} | NativeWorker: ${caps.nativeWorker.enabled}/${caps.nativeWorker.configured}`);
+  console.log(`WebAi Typhoon proxy listening on 127.0.0.1:${PORT}`);
+  console.log(`Typhoon configured: ${Boolean(TYPHOON_API_KEY)} | task/worker endpoints: disabled`);
 });
