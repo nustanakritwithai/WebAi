@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 
 const GATE_TIMEOUT_MS = 120_000;
@@ -44,9 +45,10 @@ function latestAppliedExecution(task) {
 
 function safeChildEnvironment() {
   const allowed = ["PATH", "PATHEXT", "SYSTEMROOT", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOME"];
+  const sourceByUppercaseName = new Map(Object.entries(process.env).map(([name, value]) => [name.toUpperCase(), value]));
   return Object.fromEntries(allowed
-    .filter((name) => typeof process.env[name] === "string" && process.env[name])
-    .map((name) => [name, process.env[name]]));
+    .map((name) => [name, sourceByUppercaseName.get(name)])
+    .filter(([, value]) => typeof value === "string" && value));
 }
 
 function safeRelativePath(value) {
@@ -247,8 +249,12 @@ async function runSecurity({ root, task, policyInvalid, commands }) {
 function defaultCommandRunner({ workspace, argv, timeoutMs = GATE_TIMEOUT_MS }) {
   return new Promise((resolveResult) => {
     const startedAt = Date.now();
-    const executable = process.platform === "win32" && argv[0].toLowerCase() === "npm" ? "npm.cmd" : argv[0];
-    const args = argv.slice(1);
+    const npmCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+    const useNodeNpmCli = process.platform === "win32" && argv[0].toLowerCase() === "npm" && existsSync(npmCli);
+    // A .cmd entry point requires a shell on Windows. Invoke npm's JS CLI through
+    // the current Node process instead so the verification command stays argv-only.
+    const executable = useNodeNpmCli ? process.execPath : argv[0];
+    const args = useNodeNpmCli ? [npmCli, ...argv.slice(1)] : argv.slice(1);
     let outputBytes = 0;
     let outputCaptured = false;
     const digest = createHash("sha256");
