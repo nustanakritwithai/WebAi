@@ -32,6 +32,21 @@
     row.dataset.capability = capability?.enabled ? (capability?.configured ? "configured" : "needs-env") : "disabled";
   }
 
+  function installHeaderBridge() {
+    try {
+      if (typeof headers === "function") {
+        headers = function () {
+          const h = { "Content-Type": "application/json" };
+          const token = localStorage.getItem("webai.sessionToken") || "";
+          if (token) h["x-webai-token"] = token;
+          return h;
+        };
+      }
+    } catch {
+      // Old core builds may not expose headers as a mutable global binding.
+    }
+  }
+
   function installOptionalTokenInput(authEnabled) {
     const form = document.querySelector(".connectionForm");
     if (!form) return;
@@ -46,14 +61,30 @@
       label.innerHTML = 'Session token <em>optional</em><input id="envSessionToken" type="password" autocomplete="off" placeholder="WEB_AUTH_TOKEN"><small>ใช้เมื่อ VPS เปิด WEB_AUTH_TOKEN</small>';
       const save = document.querySelector("#saveConfig");
       form.insertBefore(label, save || null);
+      document.querySelector("#envSessionToken")?.addEventListener("input", (event) => {
+        localStorage.setItem("webai.sessionToken", event.target.value.trim());
+      });
     }
     const input = document.querySelector("#envSessionToken");
     if (input) input.value = localStorage.getItem("webai.sessionToken") || "";
   }
 
+  function syncCoreState(data, ompReady) {
+    try {
+      if (typeof state !== "undefined") {
+        state.typhoonConfigured = !!(data?.capabilities?.typhoon?.configured ?? data?.keyConfigured ?? data?.typhoonConfigured);
+        state.ompEnabled = ompReady;
+      }
+      if (typeof applyActionState === "function") applyActionState();
+    } catch {
+      // UI status still updates even if an older core hides its state binding.
+    }
+  }
+
   function applyCapabilities(data) {
     const caps = data?.capabilities || {};
     const ompReady = !!(caps.omp?.enabled && caps.omp?.configured);
+    syncCoreState(data, ompReady);
 
     const ompDot = document.querySelector("#ompStatusDot");
     const ompState = document.querySelector("#ompState");
@@ -78,6 +109,7 @@
     }
 
     installOptionalTokenInput(!!data?.authEnabled);
+    installHeaderBridge();
     document.documentElement.dataset.envCapabilities = "loaded";
     document.documentElement.dataset.omp = ompReady ? "ready" : caps.omp?.enabled ? "needs-env" : "disabled";
   }
@@ -98,6 +130,7 @@
   }
 
   window.WebAiCapabilities = { refresh: refreshCapabilities, apply: applyCapabilities };
+  installHeaderBridge();
   setTimeout(refreshCapabilities, 500);
   setInterval(refreshCapabilities, 30_000);
   document.querySelector("#saveConfig")?.addEventListener("click", () => setTimeout(refreshCapabilities, 900));
