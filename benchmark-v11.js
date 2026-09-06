@@ -13,7 +13,7 @@
     R("R-01", "เครื่องจักร 1 เครื่องผลิต 24 ชิ้นใน 3 ชั่วโมง ถ้ามี 17 เครื่องทำพร้อมกัน 5 ชั่วโมง ผลิตได้กี่ชิ้น ตอบจำนวนสุดท้าย", { type: "number", value: 680 }),
     R("R-02", "เงื่อนไข: Alice ก่อน Bob, Cara หลัง Bob, Dan ก่อน Alice เรียงทั้ง 4 คน ตอบ D>A>B>C รูปแบบเดียวกัน", { type: "exactCI", value: "D>A>B>C" }),
     R("R-03", "มีผู้ใช้ 40 คน ใช้ A=23 ใช้ B=18 ใช้ทั้งสอง=7 มีกี่คนใช้ A หรือ B อย่างน้อยหนึ่งอย่าง", { type: "number", value: 34 }),
-    R("R-04", "ถุงมีแดง 3 น้ำเงิน 2 สุ่ม 2 โดยไม่คืน ความน่าจะเป็นได้แดงทั้งสอง ตอบเศษส่วนอย่างต่ำสุดหรือทศนิยม", { type: "oneOf", values: ["3/10", "0.3"] }),
+    R("R-04", "ถุงมีแดง 3 น้ำเงิน 2 สุ่ม 2 โดยไม่คืน ความน่าจะเป็นได้แดงทั้งสอง ตอบเศษส่วนอย่างต่ำสุดหรือทศนิยม", { type: "oneOf", values: ["3/10", "0.3", "0.30"] }),
     R("R-05", "ลำดับ 2, 6, 12, 20, 30, ? ตัวถัดไป", { type: "number", value: 42 }),
     R("R-06", "START ได้เมื่อ database_ready=true และ cache_healthy=true เท่านั้น ตอนนี้ true,false ควร START หรือ DO_NOT_START", { type: "exactCI", value: "DO_NOT_START" }),
     R("R-07", "ราคา 1200 ลด 15% แล้วคิดภาษี 7% จากราคาหลังลด ราคาสุทธิเท่าไร", { type: "number", value: 1091.4 }),
@@ -114,7 +114,8 @@
           catch (e) { if (e.status === 429) { await waitRate(e.retryAfter || 60); content = await rawChat(batch); calls++; } else throw e; }
           const recovered = recover(content, batch); protocolRecords.push({ jsonOk: recovered.jsonOk, found: recovered.found, expected: batch.length }); batch.forEach((t) => answerMap.set(t.id, recovered.answers.get(t.id) || ""));
         } else {
-          const result = await WebAiReasoningEngine.runBatch(batch, { baseUrl: els.base.value, signal: undefined, onRateLimit: (s) => { els.progressText.textContent = `Rate limit · ${s}s`; }, onStage: (stage) => { els.state.textContent = stage.toUpperCase(); } }); calls += 2; protocolRecords.push({ jsonOk: result.protocol.pass2Json, found: result.protocol.pass2Ids, expected: batch.length, pass1Json: result.protocol.pass1Json, pass1Ids: result.protocol.pass1Ids }); result.results.forEach((r) => answerMap.set(r.id, r.final || r.revised || r.candidate || ""));
+          const controller = new AbortController(); state.controller = controller;
+          const result = await WebAiReasoningEngine.runBatch(batch, { baseUrl: els.base.value, signal: controller.signal, onRateLimit: (s) => { els.progressText.textContent = `Rate limit · ${s}s`; }, onStage: (stage) => { els.state.textContent = stage.toUpperCase(); } }); calls += 2; protocolRecords.push({ jsonOk: result.protocol.pass2Json, found: result.protocol.pass2Ids, expected: batch.length, pass1Json: result.protocol.pass1Json, pass1Ids: result.protocol.pass1Ids }); result.results.forEach((r) => answerMap.set(r.id, r.final || r.revised || r.candidate || "")); state.controller = null;
         }
         progress(calls, totalCalls, `${calls}/${totalCalls} calls · ${Math.min((i + 1) * BATCH_SIZE, TESTS.length)}/${TESTS.length} tests`);
       }
