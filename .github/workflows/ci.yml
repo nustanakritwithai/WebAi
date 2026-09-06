@@ -25,17 +25,21 @@ jobs:
           node --check browserpod-storage-lock-fix.js
           node --check browser-linux-worker.js
           node --check browser-linux-hotfix.js
+          node --check browser-linux-running-ui-fix.js
           node --check coi-sw.js
       - name: Browser worker contract
         run: |
           grep -q 'executionTarget = "browser"' app.js
           grep -q 'browserpod-storage-lock-fix.js' app.js
+          grep -q 'browser-linux-running-ui-fix.js' app.js
           grep -q 'WebAiBrowserPodPatchReady' app.js
           grep -q 'device already opened in another tab' browserpod-storage-lock-fix.js
           grep -q 'storageKey' browserpod-storage-lock-fix.js
           grep -q 'BrowserPod.boot' browser-linux-worker.js
           grep -q 'webai.browserpod.autoboot' browser-linux-hotfix.js
           grep -q 'stopImmediatePropagation' browser-linux-hotfix.js
+          grep -q 'Linux Running' browser-linux-running-ui-fix.js
+          grep -q 'preflight_timeout' browser-linux-running-ui-fix.js
           grep -q 'Cross-Origin-Embedder-Policy' coi-sw.js
           grep -q 'Browser Linux Worker' browser-linux-worker.js
       - name: API smoke test

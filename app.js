@@ -15,7 +15,9 @@
         Promise.resolve(window.WebAiBrowserPodPatchReady)
           .catch(() => {})
           .finally(() => {
-            load("./browser-linux-worker.js", () => load("./browser-linux-hotfix.js"));
+            load("./browser-linux-worker.js", () => {
+              load("./browser-linux-hotfix.js", () => load("./browser-linux-running-ui-fix.js"));
+            });
           });
       });
     });
