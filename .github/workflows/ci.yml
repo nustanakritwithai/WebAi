@@ -25,6 +25,7 @@ jobs:
           node --check server/native-worker.mjs
           node --check server/snapshot-store.mjs
           node --check server/diff-evidence.mjs
+          node --check server/verification-engine.mjs
           node --check browser-memory-client.js
           node --check app.js
           node --check app-core.js
@@ -33,6 +34,7 @@ jobs:
           node --check core-bridge.js
           node --check core-execute.js
           node --check diff-evidence.js
+          node --check verification-evidence.js
           node --check scripts/smoke.mjs
           node --check scripts/browser-memory-smoke.mjs
           node --check scripts/core-smoke.mjs
@@ -41,6 +43,8 @@ jobs:
           node --check scripts/cache-bust.mjs
           node --check scripts/native-worker-smoke.mjs
           node --check scripts/diff-evidence-smoke.mjs
+          node --check scripts/verification-engine-smoke.mjs
+          node --check scripts/verification-state-smoke.mjs
           node --check scripts/snapshot-smoke.mjs
           node --check scripts/recovery-smoke.mjs
       - name: Secret proxy contract
@@ -83,6 +87,26 @@ jobs:
           grep -q 'deletions' server/snapshot-store.mjs
           grep -q 'diffKind' server/agent.mjs
           ! grep -q 'TYPHOON_API_KEY' server/diff-evidence.mjs
+      - name: Multi-gate verification contract
+        run: |
+          grep -q 'createVerificationEngine' server/core.mjs
+          grep -q 'multi-gate-v0.5' server/core.mjs
+          grep -q 'VERIFICATION_GATE_ORDER' server/core.mjs
+          ! grep -q 'function runVerification' server/core.mjs
+          ! grep -q 'npm test' server/core.mjs
+          grep -q 'file_safety' server/verification-engine.mjs
+          grep -q 'security' server/verification-engine.mjs
+          grep -q 'build' server/verification-engine.mjs
+          grep -q 'unit' server/verification-engine.mjs
+          grep -q 'integration' server/verification-engine.mjs
+          grep -q 'regression' server/verification-engine.mjs
+          grep -q 'verification_command_source_changed' server/verification-engine.mjs
+          grep -q 'security_findings' server/verification-engine.mjs
+          grep -q 'outputSha256' server/verification-engine.mjs
+          ! grep -q 'TYPHOON_API_KEY' server/verification-engine.mjs
+          grep -q 'normalizeVerificationGates' server/agent.mjs
+          grep -q 'passedRequired' server/agent.mjs
+          grep -q 'raw gate output must not enter task state' scripts/verification-state-smoke.mjs
       - name: Browser Agent and Memory primary contract
         run: |
           grep -q 'executionTarget = "browser-agent"' app.js
@@ -93,13 +117,15 @@ jobs:
           grep -q 'sandbox preview' app-core.js
           grep -q 'indexedDB' workspace.js
           grep -q 'workspace.js' index.html
+          grep -q 'browser-agent-contract.mjs' package.json
           ! grep -qi 'browserpod' app.js
           ! grep -qi 'browser-linux' app.js
-      - name: Optional Core Execute and Diff UI contract
+      - name: Optional Core Execute, Diff and Verification UI contract
         run: |
           grep -q 'core-bridge.js' app.js
           grep -q 'core-execute.js' app.js
           grep -q 'diff-evidence.js' app.js
+          grep -q 'verification-evidence.js' app.js
           grep -q 'webai.coreBase' core-bridge.js
           grep -q 'x-webai-session' core-bridge.js
           grep -q 'Core Execute' core-execute.js
@@ -110,6 +136,9 @@ jobs:
           grep -q 'diffEvidenceList' diff-evidence.js
           grep -q 'BEFORE SHA-256' diff-evidence.js
           grep -q 'AFTER SHA-256' diff-evidence.js
+          grep -q 'MULTI-GATE VERIFICATION' verification-evidence.js
+          grep -q 'OUTPUT SHA-256' verification-evidence.js
           ! grep -q 'innerHTML' diff-evidence.js
+          ! grep -q 'innerHTML' verification-evidence.js
       - name: Test suite
         run: npm test
