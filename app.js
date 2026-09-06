@@ -1,4 +1,6 @@
 (() => {
+  document.documentElement.dataset.executionTarget = "browser";
+
   const load = (src, done) => {
     const script = document.createElement("script");
     script.src = src;
@@ -7,5 +9,7 @@
     document.head.appendChild(script);
   };
 
-  load("./app-core.js", () => load("./capability-bridge.js"));
+  load("./app-core.js", () => {
+    load("./capability-bridge.js", () => load("./browser-linux-worker.js"));
+  });
 })();
