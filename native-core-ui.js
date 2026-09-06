@@ -6,9 +6,10 @@
 
   function replaceText(node, replacements) {
     if (!node) return;
-    let text = node.textContent || "";
+    const original = node.textContent || "";
+    let text = original;
     for (const [from, to] of replacements) text = text.replaceAll(from, to);
-    node.textContent = text;
+    if (text !== original) node.textContent = text;
   }
 
   function cleanupLegacyBrowserRuntime() {
@@ -61,10 +62,7 @@
     if (supervisedKicker) supervisedKicker.textContent = "WEBAI CORE · SUPERVISED";
 
     const hint = $("#agentActionHint");
-    if (hint && !hint.dataset.nativeCoreLabel) {
-      hint.dataset.nativeCoreLabel = "1";
-      replaceText(hint, [["Agent", "WebAi Core"], ["agent", "WebAi Core"]]);
-    }
+    if (hint) replaceText(hint, [["Agent", "WebAi Core"], ["agent", "WebAi Core"]]);
 
     const approve = $("#approveExecutionBtn");
     if (approve) approve.innerHTML = 'Approve &amp; Run Core <span>→</span>';
