@@ -6,9 +6,12 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server/index.mjs",
+    "start:proxy": "node server/index.mjs",
+    "start:core": "node server/core.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "core-smoke": "node scripts/core-smoke.mjs",
     "agent-smoke": "node scripts/agent-smoke.mjs",
     "native-worker-smoke": "node scripts/native-worker-smoke.mjs",
-    "test": "node scripts/smoke.mjs && node scripts/agent-smoke.mjs && node scripts/native-worker-smoke.mjs"
+    "test": "node scripts/smoke.mjs && node scripts/agent-smoke.mjs && node scripts/native-worker-smoke.mjs && node scripts/core-smoke.mjs"
   }
 }
