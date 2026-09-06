@@ -168,10 +168,7 @@
   }
 
   function renderCoreVerification(task) {
-    if (task?._webaiPlane !== "core") {
-      restoreBrowserInspector();
-      return;
-    }
+    if (task?._webaiPlane !== "core") return;
     const gates = gatesFor(task);
     if (verificationList) verificationList.replaceChildren(...gates.map(makeInspectorRow));
 
@@ -207,7 +204,7 @@
     applyAgentTask = function webAiVerificationApplyTask(task) {
       if (task?._webaiPlane !== "core") restoreBrowserInspector();
       original(task);
-      renderCoreVerification(task);
+      if (task?._webaiPlane === "core") renderCoreVerification(task);
     };
   }
 
