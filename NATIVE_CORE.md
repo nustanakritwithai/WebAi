@@ -28,7 +28,7 @@ The lifecycle, persistence, approval gate, and verification gate come from PR #6
 
 ## Native Worker V0.1
 
-`server/native-worker.mjs` is our own execution engine foundation. It is intentionally narrower than a general shell agent:
+`server/native-worker.mjs` is our own execution engine. It is intentionally narrower than a general shell agent:
 
 - uses OpenTyphoon to produce a structured file manifest;
 - reads only bounded text context from the configured workspace;
@@ -39,17 +39,24 @@ The lifecycle, persistence, approval gate, and verification gate come from PR #6
 - writes atomically and performs best-effort rollback if a multi-file write fails;
 - never accepts model-provided shell commands or delete operations in V0.1.
 
-## Current gate
+## Production selection
 
-The Native Worker library is implemented and regression-tested, but this PR does **not** switch the production approval endpoint from the legacy OMP adapter yet. That switch is the next milestone after the worker guard suite is green in CI.
+Set:
 
-This staging rule is intentional: a worker must pass deterministic safety tests before it is allowed to mutate a production workspace.
+```text
+WEBAI_NATIVE_WORKER_ENABLED=true
+WEBAI_WORKSPACE=/absolute/path/to/workspace
+```
+
+When enabled, the PR #6 supervised service routes `Approve & Run Core` to `WebAi Native Worker V0.1`. The old worker dependency remains only as a disabled fallback path while migration is completed. The browser UI no longer exposes OMP or BrowserPod.
+
+Worker evidence stored in task state is bounded to safe metadata: worker name, summary, changed file paths, created/changed flags, and byte counts. Raw model output and raw file contents are not copied into task state.
 
 ## Next milestone
 
-1. Inject `createNativeWorker(...).run` into the PR #6 supervised service as the production `runWorker`.
-2. Expose `nativeWorker` capability in `/api/health`.
-3. Remove the legacy OMP execution endpoint and OMP ENV surface.
-4. Record `changedFiles` as bounded task evidence.
-5. Add rollback/retry controls and a dedicated workspace snapshot before execution.
-6. Expand verification from one `npm test` command into build / unit / integration / security / regression gates.
+1. Expose a first-class `nativeWorker` capability in `/api/health`.
+2. Remove the legacy OMP execution endpoint and OMP code from `server/index.mjs` after native acceptance passes.
+3. Add a dedicated workspace snapshot / rollback checkpoint before every execution.
+4. Add retry-from-verification-failure without bypassing approval history.
+5. Expand verification from one `npm test` command into build / unit / integration / security / regression gates.
+6. Add file-level diff evidence to the UI without exposing secrets or raw environment data.
