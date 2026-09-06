@@ -1,4 +1,6 @@
 (() => {
+  const browserExecution = document.documentElement.dataset.executionTarget === "browser";
+
   function findTeam(name) {
     return [...document.querySelectorAll(".teamGrid > div")]
       .find((row) => row.querySelector("b")?.textContent?.trim().toLowerCase() === name.toLowerCase());
@@ -81,20 +83,35 @@
     }
   }
 
-  function applyCapabilities(data) {
-    const caps = data?.capabilities || {};
-    const ompReady = !!(caps.omp?.enabled && caps.omp?.configured);
-    syncCoreState(data, ompReady);
-
+  function paintBrowserOmpWaiting() {
     const ompDot = document.querySelector("#ompStatusDot");
     const ompState = document.querySelector("#ompState");
-    if (ompDot) ompDot.className = `tinyDot ${ompReady ? "ok" : caps.omp?.enabled ? "warn" : "idle"}`;
-    if (ompState) ompState.textContent = ompReady ? "พร้อม" : caps.omp?.enabled ? "รอ ENV" : "ยังปิด";
-
     const teamOmp = document.querySelector("#teamOmp");
     const teamOmpText = document.querySelector("#teamOmpText");
-    if (teamOmp) teamOmp.className = `tinyDot ${ompReady ? "ok" : caps.omp?.enabled ? "warn" : "idle"}`;
-    if (teamOmpText) teamOmpText.textContent = ompReady ? "Configured" : caps.omp?.enabled ? "Needs ENV" : "Disabled";
+    if (ompDot) ompDot.className = "tinyDot idle";
+    if (ompState) ompState.textContent = "Browser Worker";
+    if (teamOmp) teamOmp.className = "tinyDot idle";
+    if (teamOmpText) teamOmpText.textContent = "Browser-owned";
+  }
+
+  function applyCapabilities(data) {
+    const caps = data?.capabilities || {};
+    const serverOmpReady = !!(caps.omp?.enabled && caps.omp?.configured);
+    const ompReady = browserExecution ? false : serverOmpReady;
+    syncCoreState(data, ompReady);
+
+    if (browserExecution) {
+      paintBrowserOmpWaiting();
+    } else {
+      const ompDot = document.querySelector("#ompStatusDot");
+      const ompState = document.querySelector("#ompState");
+      if (ompDot) ompDot.className = `tinyDot ${ompReady ? "ok" : caps.omp?.enabled ? "warn" : "idle"}`;
+      if (ompState) ompState.textContent = ompReady ? "พร้อม" : caps.omp?.enabled ? "รอ ENV" : "ยังปิด";
+      const teamOmp = document.querySelector("#teamOmp");
+      const teamOmpText = document.querySelector("#teamOmpText");
+      if (teamOmp) teamOmp.className = `tinyDot ${ompReady ? "ok" : caps.omp?.enabled ? "warn" : "idle"}`;
+      if (teamOmpText) teamOmpText.textContent = ompReady ? "Configured" : caps.omp?.enabled ? "Needs ENV" : "Disabled";
+    }
 
     paintTeam("ECC", caps.ecc);
     paintTeam("Hermes", caps.hermes);
@@ -102,7 +119,7 @@
     paintTeam("Harpoon", caps.harpoon);
 
     const previewStatus = document.querySelector("#previewStatus");
-    if (previewStatus && caps.preview) {
+    if (previewStatus && caps.preview && !browserExecution) {
       previewStatus.textContent = caps.preview.enabled
         ? (caps.preview.configured ? "Preview channel configured" : "Preview เปิดแล้ว · รอ ENV")
         : "Preview channel disabled";
@@ -111,7 +128,7 @@
     installOptionalTokenInput(!!data?.authEnabled);
     installHeaderBridge();
     document.documentElement.dataset.envCapabilities = "loaded";
-    document.documentElement.dataset.omp = ompReady ? "ready" : caps.omp?.enabled ? "needs-env" : "disabled";
+    document.documentElement.dataset.omp = browserExecution ? "browser" : (ompReady ? "ready" : caps.omp?.enabled ? "needs-env" : "disabled");
   }
 
   async function refreshCapabilities() {
@@ -128,6 +145,21 @@
       // Core app owns connection-error UX.
     }
   }
+
+  window.addEventListener("webai:browser-worker-status", (event) => {
+    if (!browserExecution) return;
+    const detail = event.detail || {};
+    const ompDot = document.querySelector("#ompStatusDot");
+    const ompState = document.querySelector("#ompState");
+    const teamOmp = document.querySelector("#teamOmp");
+    const teamOmpText = document.querySelector("#teamOmpText");
+    const kind = detail.ompReady ? "ok" : detail.linuxReady ? "warn" : "idle";
+    if (ompDot) ompDot.className = `tinyDot ${kind}`;
+    if (ompState) ompState.textContent = detail.ompReady ? "พร้อมใน Browser" : detail.linuxReady ? "รอ Browser build" : "Browser Worker";
+    if (teamOmp) teamOmp.className = `tinyDot ${kind}`;
+    if (teamOmpText) teamOmpText.textContent = detail.ompReady ? "Browser ready" : detail.linuxReady ? "Compatibility pending" : "Browser-owned";
+    document.documentElement.dataset.omp = detail.ompReady ? "browser-ready" : "browser-pending";
+  });
 
   window.WebAiCapabilities = { refresh: refreshCapabilities, apply: applyCapabilities };
   installHeaderBridge();
