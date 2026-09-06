@@ -216,7 +216,7 @@
                 <div class="deviceSwitch"><button class="active" type="button">Desktop</button><button type="button">Tablet</button><button type="button">Mobile</button></div>
               </div>
               <div class="previewCanvas" id="previewCanvas">
-                <div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>กด Apply to Workspace แล้ว Run Preview เพื่อรัน index.html, style.css และ app.js ใน sandbox</small></div>
+                <div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>กด Apply to Workspace แล้ว Run Preview เพื่อรันไฟล์จากโฟลเดอร์ task ปัจจุบันใน sandbox</small></div>
               </div>
             </section>
 
@@ -253,7 +253,7 @@
       <section class="fileWorkspaceSection" id="fileWorkspace">
         <div class="sectionHead">
           <div><span class="sectionKicker">BROWSER WORKSPACE</span><h2>Agent files</h2></div>
-          <small class="workspacePersistenceNote">Persisted in this browser with IndexedDB</small>
+          <small class="workspacePersistenceNote" id="workspaceCurrentFolder">Current task folder: — · Persisted in this browser with IndexedDB</small>
         </div>
 
         <div class="fileWorkspaceGrid">

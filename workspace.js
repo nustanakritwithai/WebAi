@@ -12,6 +12,7 @@
 
   const els = {
     status: root.querySelector("#workspaceStatus"),
+    currentFolder: root.querySelector("#workspaceCurrentFolder"),
     tree: root.querySelector("#workspaceTree"),
     treeEmpty: root.querySelector("#workspaceTreeEmpty"),
     newFolder: root.querySelector("#newWorkspaceFolder"),
@@ -29,6 +30,7 @@
   let items = [];
   let selectedPath = null;
   let selectedFolder = "";
+  let activeTaskFolder = "";
   const listeners = new Set();
 
   class WorkspacePathError extends Error {
@@ -77,6 +79,16 @@
 
   function baseName(path) {
     return path.slice(path.lastIndexOf("/") + 1);
+  }
+
+  function taskFolderForId(taskId) {
+    const id = String(taskId || "").trim();
+    if (!/^BROWSER-[0-9]{8}$/.test(id)) throw new WorkspacePathError("Invalid Browser Agent task id.");
+    return normalizePath(`tasks/${id}`);
+  }
+
+  function setCurrentFolderLabel() {
+    if (els.currentFolder) els.currentFolder.textContent = `Current task folder: ${activeTaskFolder || "—"} · Persisted in this browser with IndexedDB`;
   }
 
   function openDatabase() {
@@ -146,6 +158,7 @@
     if (selectedFolder && !itemAt(selectedFolder)) selectedFolder = "";
     renderTree();
     renderEditor();
+    setCurrentFolderLabel();
   }
 
   function folderChildren(folder) {
@@ -261,6 +274,24 @@
     els.delete.disabled = true;
   }
 
+  async function ensureFolder(path) {
+    const normalized = normalizePath(path);
+    const parts = normalized.split("/");
+    const missing = [];
+    let currentPath = "";
+    for (const part of parts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+      if (!itemAt(currentPath)) missing.push(currentPath);
+      else if (itemAt(currentPath).type !== "folder") throw new Error(`Workspace path is not a folder: ${currentPath}`);
+    }
+    if (!missing.length) return normalized;
+    const now = Date.now();
+    await transaction("readwrite", (store) => missing.forEach((folder) => store.add({ path: folder, parent: parentPath(folder), name: baseName(folder), type: "folder", content: null, version: 1, createdAt: now, updatedAt: now })));
+    await refresh();
+    notify({ type: "folders_created", paths: missing.slice() });
+    return normalized;
+  }
+
   async function writeFiles(files, metadata = {}) {
     if (!Array.isArray(files) || files.length < 1 || files.length > MAX_FILES_PER_WRITE) throw new Error("Invalid workspace file batch.");
     if (!db) await ready;
@@ -273,6 +304,8 @@
     const now = Date.now();
     const taskId = typeof metadata.taskId === "string" ? metadata.taskId.slice(0, 80) : "";
     const source = typeof metadata.source === "string" ? metadata.source.slice(0, 40) : "browser-agent";
+    const taskFolder = taskId ? taskFolderForId(taskId) : "";
+    if (taskFolder && records.some((record) => !record.path.startsWith(`${taskFolder}/`))) throw new WorkspacePathError("Task artifacts must stay inside their task folder.");
     const versions = records.map(({ path }) => (Number(itemAt(path)?.version) || 0) + 1);
     await new Promise((resolve, reject) => {
       const request = db.transaction([STORE_NAME, REVISION_STORE_NAME], "readwrite");
@@ -314,6 +347,65 @@
     return result;
   }
 
+  async function ensureTaskFolder(taskId) {
+    const folder = taskFolderForId(taskId);
+    await ensureFolder(folder);
+    activeTaskFolder = folder;
+    selectedFolder = folder;
+    selectedPath = null;
+    renderTree();
+    renderEditor();
+    setCurrentFolderLabel();
+    return folder;
+  }
+
+  function taskFileName(value) {
+    const name = normalizePath(value);
+    if (name.startsWith("tasks/") || name === "tasks") throw new WorkspacePathError("Task file names must be relative to the task folder.");
+    return name;
+  }
+
+  async function writeTaskFiles(taskId, files, metadata = {}) {
+    const folder = await ensureTaskFolder(taskId);
+    if (!Array.isArray(files) || files.length < 1) throw new Error("Invalid task file batch.");
+    const taskFiles = files.map((file) => ({ path: `${folder}/${taskFileName(file?.name ?? file?.path)}`, content: typeof file?.content === "string" ? file.content : "" }));
+    return writeFiles(taskFiles, { ...metadata, taskId, source: metadata.source || "browser-agent" });
+  }
+
+  async function readTaskFiles(taskId, names) {
+    const folder = taskFolderForId(taskId);
+    if (!Array.isArray(names)) throw new Error("Task file names must be an array.");
+    return readFiles(names.map((name) => `${folder}/${taskFileName(name)}`));
+  }
+
+  async function listTaskFiles(taskId) {
+    const folder = taskFolderForId(taskId);
+    if (!db) await ready;
+    return items.filter((item) => item.type === "file" && item.path.startsWith(`${folder}/`)).map((item) => ({
+      path: item.path.slice(folder.length + 1), content: item.content || "", version: Number(item.version) || 1, updatedAt: item.updatedAt || null
+    }));
+  }
+
+  function setActiveTask(taskId) {
+    try {
+      activeTaskFolder = taskFolderForId(taskId);
+      selectedFolder = activeTaskFolder;
+      selectedPath = null;
+      renderTree();
+      renderEditor();
+      setCurrentFolderLabel();
+      return activeTaskFolder;
+    } catch {
+      activeTaskFolder = "";
+      selectedFolder = "";
+      selectedPath = null;
+      renderTree();
+      renderEditor();
+      setCurrentFolderLabel();
+      return "";
+    }
+  }
+
   async function listFiles() {
     if (!db) await ready;
     return items.filter((item) => item.type === "file").map((item) => ({ path: item.path, content: item.content || "", version: Number(item.version) || 1, updatedAt: item.updatedAt || null }));
@@ -353,6 +445,6 @@
   })();
   ready.catch(() => {});
 
-  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, listFiles, subscribe, maxFileBytes: MAX_FILE_BYTES };
+  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, listFiles, ensureTaskFolder, writeTaskFiles, readTaskFiles, listTaskFiles, taskFolderForId, setActiveTask, getActiveTaskFolder: () => activeTaskFolder, subscribe, maxFileBytes: MAX_FILE_BYTES };
   window.dispatchEvent(new CustomEvent("webai:workspace-ready"));
 })();
