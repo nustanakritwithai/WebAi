@@ -11,6 +11,7 @@ const sessionSecret = "session-secret-for-smoke-only-32bytes";
 const root = mkdtempSync(join(tmpdir(), "webai-core-smoke-"));
 const workspace = join(root, "workspace");
 const stateDir = join(root, "state");
+const snapshotDir = join(root, "snapshots");
 mkdirSync(join(workspace, "src"), { recursive: true });
 writeFileSync(join(workspace, "package.json"), JSON.stringify({ name: "core-smoke", scripts: { test: "node -e \"process.exit(0)\"" } }, null, 2));
 writeFileSync(join(workspace, "src", "app.js"), "export const value = 'old';\n");
@@ -41,6 +42,7 @@ const core = spawn(process.execPath, ["server/core.mjs"], {
     WEBAI_WORKSPACE: workspace,
     WEBAI_NATIVE_WORKER_ENABLED: "true",
     WEBAI_CORE_STATE_DIR: stateDir,
+    WEBAI_CORE_SNAPSHOT_DIR: snapshotDir,
     WEBAI_CORE_PAIRING_TOKEN: pairingToken,
     WEBAI_CORE_SESSION_SECRET: sessionSecret,
     CORE_ALLOWED_ORIGINS: "https://nustanakritwithai.github.io",
@@ -79,9 +81,26 @@ async function coreRequest(path, sessionToken, method = "GET", body) {
   return { response, data: await response.json() };
 }
 
+async function createAndApprove(sessionToken, goal) {
+  const created = await coreRequest("/api/tasks", sessionToken, "POST", { goal });
+  if (created.response.status !== 201 || created.data.task?.status !== "awaiting_approval") throw new Error("task planning failed");
+  const taskId = created.data.task.id;
+  const approved = await coreRequest(`/api/tasks/${encodeURIComponent(taskId)}/approve`, sessionToken, "POST");
+  if (approved.response.status !== 200 || approved.data.task?.status !== "awaiting_verification") throw new Error("native worker approval failed");
+  const execution = approved.data.task?.executions?.at?.(-1) || approved.data.task?.executions?.[approved.data.task.executions.length - 1];
+  if (!execution?.executionId || !execution?.snapshotId || execution.status !== "applied" || !execution.files?.length) {
+    throw new Error("transaction evidence missing after approval");
+  }
+  return { taskId, approved: approved.data.task };
+}
+
 try {
   const health = await waitForHealth();
-  if (!health.ok || health.service !== "webai-core" || health.capabilities?.nativeWorker?.configured !== true || health.capabilities?.sessionAuth?.configured !== true) {
+  if (!health.ok
+    || health.service !== "webai-core"
+    || health.capabilities?.nativeWorker?.configured !== true
+    || health.capabilities?.snapshotStore?.configured !== true
+    || health.capabilities?.sessionAuth?.configured !== true) {
     throw new Error("core health contract failed");
   }
 
@@ -96,27 +115,53 @@ try {
   const ownerB = await openSession("client_owner_000000000002");
   if (ownerB.response.status !== 201 || !ownerB.data.sessionToken) throw new Error("owner B session failed");
 
-  const created = await coreRequest("/api/tasks", ownerA.data.sessionToken, "POST", { goal: "Update fixture safely" });
-  if (created.response.status !== 201 || created.data.task?.status !== "awaiting_approval") throw new Error("task planning failed");
-  const taskId = created.data.task.id;
-
-  const crossOwner = await coreRequest(`/api/tasks/${encodeURIComponent(taskId)}`, ownerB.data.sessionToken);
-  if (crossOwner.response.status !== 404 || crossOwner.data.error !== "task_not_found") throw new Error("owner isolation failed");
-
-  const approved = await coreRequest(`/api/tasks/${encodeURIComponent(taskId)}/approve`, ownerA.data.sessionToken, "POST");
-  if (approved.response.status !== 200 || approved.data.task?.status !== "awaiting_verification") throw new Error("native worker approval failed");
+  // Transaction 1: apply then roll back successfully.
+  const first = await createAndApprove(ownerA.data.sessionToken, "Update fixture safely, then allow rollback");
   if (readFileSync(join(workspace, "src", "app.js"), "utf8") !== "export const value = 'new';\n") throw new Error("native worker did not change workspace");
 
-  const verified = await coreRequest(`/api/tasks/${encodeURIComponent(taskId)}/verify`, ownerA.data.sessionToken, "POST");
+  const crossOwnerRead = await coreRequest(`/api/tasks/${encodeURIComponent(first.taskId)}`, ownerB.data.sessionToken);
+  if (crossOwnerRead.response.status !== 404 || crossOwnerRead.data.error !== "task_not_found") throw new Error("owner isolation failed");
+  const crossOwnerRollback = await coreRequest(`/api/tasks/${encodeURIComponent(first.taskId)}/rollback`, ownerB.data.sessionToken, "POST");
+  if (crossOwnerRollback.response.status !== 404 || crossOwnerRollback.data.error !== "task_not_found") throw new Error("cross-owner rollback was not denied");
+
+  const rolledBack = await coreRequest(`/api/tasks/${encodeURIComponent(first.taskId)}/rollback`, ownerA.data.sessionToken, "POST");
+  if (rolledBack.response.status !== 200
+    || rolledBack.data.task?.status !== "rolled_back"
+    || rolledBack.data.task?.rollback?.verified !== true) {
+    throw new Error("rollback did not complete with verified evidence");
+  }
+  if (readFileSync(join(workspace, "src", "app.js"), "utf8") !== "export const value = 'old';\n") throw new Error("rollback did not restore original workspace bytes");
+
+  // Transaction 2: verified/completed work cannot use rollback endpoint.
+  const second = await createAndApprove(ownerA.data.sessionToken, "Update fixture and verify it");
+  const verified = await coreRequest(`/api/tasks/${encodeURIComponent(second.taskId)}/verify`, ownerA.data.sessionToken, "POST");
   if (verified.response.status !== 200 || verified.data.task?.status !== "completed" || verified.data.task?.verification?.ok !== true) {
     throw new Error("verification gate failed");
+  }
+  const completedRollback = await coreRequest(`/api/tasks/${encodeURIComponent(second.taskId)}/rollback`, ownerA.data.sessionToken, "POST");
+  if (completedRollback.response.status !== 409 || completedRollback.data.error !== "completed_task_not_rollbackable") {
+    throw new Error("completed task rollback was not denied");
+  }
+
+  // Transaction 3: post-execution drift must cause conflict before any restore.
+  const third = await createAndApprove(ownerA.data.sessionToken, "Update fixture for drift conflict test");
+  writeFileSync(join(workspace, "src", "app.js"), "export const value = 'external-drift';\n");
+  const driftRollback = await coreRequest(`/api/tasks/${encodeURIComponent(third.taskId)}/rollback`, ownerA.data.sessionToken, "POST");
+  if (driftRollback.response.status !== 409
+    || driftRollback.data.error !== "rollback_conflict"
+    || !Array.isArray(driftRollback.data.files)
+    || !driftRollback.data.files.includes("src/app.js")) {
+    throw new Error("rollback drift protection failed");
+  }
+  if (readFileSync(join(workspace, "src", "app.js"), "utf8") !== "export const value = 'external-drift';\n") {
+    throw new Error("conflicted rollback mutated the workspace");
   }
 
   const listedA = await coreRequest("/api/tasks", ownerA.data.sessionToken);
   const listedB = await coreRequest("/api/tasks", ownerB.data.sessionToken);
-  if (listedA.data.tasks?.length !== 1 || listedB.data.tasks?.length !== 0) throw new Error("owner-scoped task listing failed");
+  if (listedA.data.tasks?.length !== 3 || listedB.data.tasks?.length !== 0) throw new Error("owner-scoped task listing failed");
 
-  console.log("CORE SMOKE PASS: signed sessions, owner isolation, proxy planning, native worker, verification");
+  console.log("CORE SMOKE PASS: sessions, owner isolation, snapshot transaction, rollback, completed denial, drift conflict, verification");
 } finally {
   core.kill("SIGTERM");
   await new Promise((resolve) => fakeProxy.close(resolve));
