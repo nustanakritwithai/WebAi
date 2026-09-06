@@ -10,6 +10,8 @@
   };
 
   load("./app-core.js", () => {
-    load("./capability-bridge.js", () => load("./browser-linux-worker.js"));
+    load("./capability-bridge.js", () => {
+      load("./browser-linux-worker.js", () => load("./browser-linux-hotfix.js"));
+    });
   });
 })();

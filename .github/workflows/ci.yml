@@ -23,11 +23,14 @@ jobs:
           node --check app-core.js
           node --check capability-bridge.js
           node --check browser-linux-worker.js
+          node --check browser-linux-hotfix.js
           node --check coi-sw.js
       - name: Browser worker contract
         run: |
           grep -q 'executionTarget = "browser"' app.js
           grep -q 'BrowserPod.boot' browser-linux-worker.js
+          grep -q 'webai.browserpod.autoboot' browser-linux-hotfix.js
+          grep -q 'stopImmediatePropagation' browser-linux-hotfix.js
           grep -q 'Cross-Origin-Embedder-Policy' coi-sw.js
           grep -q 'Browser Linux Worker' browser-linux-worker.js
       - name: API smoke test
