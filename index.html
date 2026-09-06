@@ -174,8 +174,7 @@
                 <p id="agentActionHint">Agent จะหยุดรอให้คุณตรวจแผนก่อน execution</p>
               </div>
               <div class="agentActionButtons">
-                <button id="approveExecutionBtn" class="primary" type="button" disabled>Approve &amp; Generate <span>→</span></button>
-                <button id="applyAgentFilesBtn" class="workspaceAction primary" type="button" disabled>Apply to Workspace <span>↓</span></button>
+                <button id="approveExecutionBtn" class="primary" type="button" disabled>Approve &amp; Save Files <span>→</span></button>
                 <button id="verifyTaskBtn" class="verifyBtn" type="button" disabled>Verify <span>✓</span></button>
               </div>
             </div>
@@ -207,6 +206,7 @@
             <section id="tab-plan" class="tabPanel active">
               <div class="emptyState" id="planEmpty"><span>≡</span><b>ยังไม่มีแผน</b><small>เมื่อ Typhoon สร้างแผน Structured output จะอยู่ตรงนี้</small></div>
               <pre id="planBox" class="planBox hidden"></pre>
+              <div id="artifactSummary" class="artifactSummary hidden" aria-live="polite"></div>
             </section>
 
             <section id="tab-preview" class="tabPanel">
@@ -216,7 +216,7 @@
                 <div class="deviceSwitch"><button class="active" type="button">Desktop</button><button type="button">Tablet</button><button type="button">Mobile</button></div>
               </div>
               <div class="previewCanvas" id="previewCanvas">
-                <div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>กด Apply to Workspace แล้ว Run Preview เพื่อรันไฟล์จากโฟลเดอร์ task ปัจจุบันใน sandbox</small></div>
+                <div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>หลัง Approve ระบบจะบันทึกไฟล์ลงโฟลเดอร์ task ปัจจุบัน แล้วกด Run Preview เพื่อรันใน sandbox</small></div>
               </div>
             </section>
 
