@@ -1,0 +1,10 @@
+providers:
+  opentyphoon:
+    baseUrl: https://api.opentyphoon.ai/v1
+    api: openai-completions
+    apiKey: TYPHOON_API_KEY
+    authHeader: true
+    disableStrictTools: true
+    models:
+      - id: typhoon-v2.5-30b-a3b-instruct
+        name: OpenTyphoon 2.5 30B A3B
