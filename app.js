@@ -9,7 +9,9 @@
     document.head.appendChild(script);
   };
 
-  load("./app-core.js", () => {
-    load("./capability-bridge.js");
+  load("./browser-memory-client.js", () => {
+    load("./app-core.js", () => {
+      load("./capability-bridge.js");
+    });
   });
 })();
