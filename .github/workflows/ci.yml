@@ -26,6 +26,7 @@ jobs:
           node --check server/snapshot-store.mjs
           node --check app.js
           node --check app-core.js
+          node --check workspace.js
           node --check capability-bridge.js
           node --check core-bridge.js
           node --check core-mode.js
@@ -93,20 +94,16 @@ jobs:
           grep -q 'restoreCaptured' server/snapshot-store.mjs
           grep -q 'snapshot_store_inside_workspace' server/snapshot-store.mjs
           ! grep -q 'TYPHOON_API_KEY' server/snapshot-store.mjs
-      - name: Frontend Agent/Core split contract
+      - name: Frontend Browser Agent contract
         run: |
-          grep -q 'executionTarget = "webai-native"' app.js
-          grep -q 'core-bridge.js' app.js
-          grep -q 'core-mode.js' app.js
-          ! grep -q 'native-core-ui.js' app.js
-          grep -q 'webai.coreBase' core-bridge.js
-          grep -q 'x-webai-session' core-bridge.js
-          grep -q 'Core Execute' core-mode.js
-          grep -q 'Run Agent → Ask Typhoon' app-core.js
-          grep -q 'isTaskReady' core-mode.js
-          grep -q 'rollbackTaskBtn' core-mode.js
-          grep -q '/rollback' core-mode.js
-          grep -q 'Native Worker' core-mode.js
+          grep -q 'executionTarget = "browser-agent"' app.js
+          ! grep -q 'core-bridge.js' app.js
+          ! grep -q 'core-mode.js' app.js
+          grep -q 'requestBrowserAgentChat' app-core.js
+          grep -q '/api/typhoon/chat' app-core.js
+          grep -q 'localOnly: true' app-core.js
+          grep -q 'sandbox preview' app-core.js
+          grep -q 'indexedDB' workspace.js
           ! grep -qi 'browserpod' app.js
           ! grep -qi 'browser-linux' app.js
       - name: Test suite
