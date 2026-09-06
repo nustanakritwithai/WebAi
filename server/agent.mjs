@@ -66,6 +66,57 @@ function normalizeSnapshotFiles(value) {
   })).filter((item) => item.path);
 }
 
+function normalizeVerificationGates(value) {
+  if (!Array.isArray(value)) return [];
+  const allowedStatus = new Set(["passed", "failed", "skipped", "blocked"]);
+  return value.slice(0, 12).map((gate) => {
+    const status = allowedStatus.has(gate?.status) ? gate.status : "failed";
+    const normalized = {
+      id: boundedText(gate?.id, 60),
+      label: boundedText(gate?.label, 100),
+      required: gate?.required === true,
+      status,
+    };
+    if (typeof gate?.command === "string") normalized.command = boundedText(gate.command, 320);
+    if (typeof gate?.source === "string") normalized.source = boundedText(gate.source, 60);
+    if (Number.isInteger(gate?.exitCode)) normalized.exitCode = gate.exitCode;
+    if (Number.isInteger(gate?.durationMs) && gate.durationMs >= 0) normalized.durationMs = Math.min(gate.durationMs, 3_600_000);
+    if (typeof gate?.outputSha256 === "string" && /^[a-f0-9]{64}$/i.test(gate.outputSha256)) normalized.outputSha256 = gate.outputSha256.toLowerCase();
+    if (gate?.outputCaptured === true) normalized.outputCaptured = true;
+    if (Number.isInteger(gate?.outputBytes) && gate.outputBytes >= 0) normalized.outputBytes = Math.min(gate.outputBytes, 10_000_000);
+    if (typeof gate?.error === "string") normalized.error = boundedText(gate.error, 120);
+    if (typeof gate?.reason === "string") normalized.reason = boundedText(gate.reason, 120);
+    if (Number.isInteger(gate?.trackedFiles)) normalized.trackedFiles = Math.max(0, gate.trackedFiles);
+    if (Number.isInteger(gate?.changedFiles)) normalized.changedFiles = Math.max(0, gate.changedFiles);
+    if (Number.isInteger(gate?.scannedFiles)) normalized.scannedFiles = Math.max(0, gate.scannedFiles);
+    if (Array.isArray(gate?.conflicts)) normalized.conflicts = gate.conflicts.slice(0, 16).map((path) => boundedText(path, 240)).filter(Boolean);
+    if (Array.isArray(gate?.findings)) {
+      normalized.findings = gate.findings.slice(0, 16).map((finding) => ({
+        path: boundedText(finding?.path, 240),
+        code: boundedText(finding?.code, 80),
+      })).filter((finding) => finding.path && finding.code);
+    }
+    return normalized;
+  }).filter((gate) => gate.id && gate.label);
+}
+
+function normalizeVerificationEvidence(evidence) {
+  const gates = normalizeVerificationGates(evidence?.gates);
+  const requiredGates = Number.isInteger(evidence?.requiredGates) ? Math.max(0, evidence.requiredGates) : gates.filter((gate) => gate.required).length;
+  const passedRequired = Number.isInteger(evidence?.passedRequired) ? Math.max(0, evidence.passedRequired) : gates.filter((gate) => gate.required && gate.status === "passed").length;
+  const failedRequired = Number.isInteger(evidence?.failedRequired) ? Math.max(0, evidence.failedRequired) : Math.max(0, requiredGates - passedRequired);
+  const normalized = {
+    ok: evidence?.ok === true,
+    ...(typeof evidence?.profile === "string" ? { profile: boundedText(evidence.profile, 80) } : {}),
+    ...(gates.length ? { gates, requiredGates, passedRequired, failedRequired } : {}),
+    ...(typeof evidence?.command === "string" ? { command: boundedText(evidence.command, 200) } : {}),
+    ...(Number.isInteger(evidence?.exitCode) ? { exitCode: evidence.exitCode } : {}),
+    ...(typeof evidence?.output === "string" && evidence.output.length > 0 ? { outputCaptured: true } : {}),
+  };
+  if (!normalized.ok) normalized.error = "verification_failed";
+  return normalized;
+}
+
 function taskView(task) {
   return structuredClone(task);
 }
@@ -327,16 +378,14 @@ export function createAgentService({
     record(task, "verification_started");
     try {
       const evidence = await runLocked(() => runVerification(task));
-      const normalizedEvidence = {
-        ok: evidence?.ok === true,
-        ...(typeof evidence?.command === "string" ? { command: boundedText(evidence.command, 200) } : {}),
-        ...(Number.isInteger(evidence?.exitCode) ? { exitCode: evidence.exitCode } : {}),
-        ...(typeof evidence?.output === "string" && evidence.output.length > 0 ? { outputCaptured: true } : {}),
-        ...(evidence?.ok === false ? { error: "verification_failed" } : {}),
-      };
+      const normalizedEvidence = normalizeVerificationEvidence(evidence);
       task.verification = { completedAt: now(), ...normalizedEvidence };
       task.status = normalizedEvidence.ok ? "completed" : "verification_failed";
-      record(task, normalizedEvidence.ok ? "verification_passed" : "verification_failed");
+      record(task, normalizedEvidence.ok ? "verification_passed" : "verification_failed", {
+        profile: task.verification.profile,
+        requiredGates: task.verification.requiredGates,
+        passedRequired: task.verification.passedRequired,
+      });
       return taskView(task);
     } catch (error) {
       task.status = "verification_failed";
