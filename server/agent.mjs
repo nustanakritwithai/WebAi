@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { createNativeWorker } from "./native-worker.mjs";
 
 const MAX_GOAL_CHARS = 12_000;
 const MAX_TASKS = 200;
@@ -30,6 +31,20 @@ function boundedText(value, limit = 8_000) {
 
 function boundedList(value, limit, itemLimit) {
   return Array.isArray(value) ? value.slice(0, limit).map((item) => boundedText(item, itemLimit)).filter(Boolean) : [];
+}
+
+function envEnabled(name) {
+  return /^(1|true|yes|on)$/i.test(String(process.env[name] || ""));
+}
+
+function normalizeChangedFiles(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 16).map((item) => ({
+    path: boundedText(item?.path, 240),
+    created: item?.created === true,
+    changed: item?.changed !== false,
+    ...(Number.isInteger(item?.bytes) && item.bytes >= 0 ? { bytes: Math.min(item.bytes, 500_000) } : {}),
+  })).filter((item) => item.path);
 }
 
 function taskView(task) {
@@ -70,6 +85,13 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
   if (typeof requestModel !== "function") throw new TypeError("requestModel must be a function");
   if (typeof runWorker !== "function") throw new TypeError("runWorker must be a function");
   if (typeof runVerification !== "function") throw new TypeError("runVerification must be a function");
+
+  const nativeWorkerEnabled = envEnabled("WEBAI_NATIVE_WORKER_ENABLED");
+  const nativeWorker = nativeWorkerEnabled
+    ? createNativeWorker({ workspace: process.env.WEBAI_WORKSPACE || "", requestModel })
+    : null;
+  const executeWorker = nativeWorker ? nativeWorker.run : runWorker;
+  const workerName = nativeWorker ? "webai-native-v0.1" : "legacy-worker";
 
   function persist() {
     if (!statePath) return;
@@ -140,7 +162,7 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
     try {
       const response = await requestModel({
         messages: [
-          { role: "system", content: "You are the planner in a supervised software engineering agent. Return only JSON: {summary:string,steps:[{title:string,acceptance:string}],risks:string[]}. Keep the plan concise. Never claim a change was made." },
+          { role: "system", content: "You are the planner in the WebAi supervised software engineering core. Return only JSON: {summary:string,steps:[{title:string,acceptance:string}],risks:string[]}. Keep the plan concise. Never claim a change was made." },
           { role: "user", content: goal },
         ],
         temperature: 0.1,
@@ -164,22 +186,24 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
     if (!task.plan?.steps?.length) throw httpError("task_plan_missing", 409);
     task.approval = { approvedAt: now() };
     task.status = "executing";
-    record(task, "execution_approved");
+    record(task, "execution_approved", { worker: workerName });
     const planText = task.plan.steps.map((step, index) => `${index + 1}. ${step.title}${step.acceptance ? ` Acceptance: ${step.acceptance}` : ""}`).join("\n");
     try {
-      const result = await runWorker(`You are an implementation worker. Work only in the configured workspace. Goal: ${task.goal}\n\nApproved plan:\n${planText}\n\nDo not claim completion without reporting changed files and commands run.`);
+      const result = await executeWorker(`Goal: ${task.goal}\n\nApproved plan:\n${planText}\n\nImplement only the approved task inside the configured workspace. Return bounded evidence of changed files. Do not claim DONE; verification is a separate gate.`);
       task.worker = {
         completedAt: now(),
-        worker: boundedText(result?.worker || "worker", 100),
+        worker: boundedText(result?.worker || workerName, 100),
+        summary: boundedText(result?.content, 1_200),
+        changedFiles: normalizeChangedFiles(result?.changedFiles),
         outputCaptured: typeof result?.content === "string" && result.content.length > 0,
       };
       task.status = "awaiting_verification";
-      record(task, "worker_finished");
+      record(task, "worker_finished", { worker: task.worker.worker, changedFiles: task.worker.changedFiles.length });
       return taskView(task);
     } catch (error) {
       task.status = "failed";
       task.error = "worker_failed";
-      record(task, "worker_failed", { error: task.error });
+      record(task, "worker_failed", { error: task.error, worker: workerName });
       throw httpError(task.error, Number(error?.status) || 502);
     }
   }
@@ -212,7 +236,13 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
 
   restore();
   return {
-    status: () => ({ enabled: true, persistenceConfigured: Boolean(statePath), taskCount: tasks.size }),
+    status: () => ({
+      enabled: true,
+      persistenceConfigured: Boolean(statePath),
+      taskCount: tasks.size,
+      worker: workerName,
+      nativeWorkerEnabled,
+    }),
     createTask,
     approveAndExecute,
     verify,
