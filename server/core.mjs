@@ -19,10 +19,8 @@ const VERIFICATION_TIMEOUT_MS = 180_000;
 const VERIFICATION_OUTPUT_CHARS = 12_000;
 const REQUESTS_PER_MINUTE = 90;
 const MAX_BODY_BYTES = 64 * 1024;
-const BOOTSTRAP_TTL_SECONDS = 60;
 const services = new Map();
 const buckets = new Map();
-const bootstrapGrants = new Map();
 
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65_535) throw new Error("CORE_PORT must be an integer between 1 and 65535");
 
@@ -164,37 +162,6 @@ function ownerSession(req) {
 
 function validClientId(value) {
   return typeof value === "string" && /^[A-Za-z0-9_-]{16,80}$/.test(value);
-}
-
-function issueSession(clientId) {
-  const now = Math.floor(Date.now() / 1000);
-  const exp = now + SESSION_TTL_SECONDS;
-  const payload = { v: 1, ownerId: clientId, iat: now, exp, sid: randomUUID() };
-  return {
-    sessionToken: signSession(payload),
-    ownerId: payload.ownerId,
-    expiresAt: new Date(exp * 1000).toISOString(),
-  };
-}
-
-function createBootstrapGrant(clientId) {
-  const now = Date.now();
-  for (const [code, grant] of bootstrapGrants) {
-    if (grant.expiresAt <= now) bootstrapGrants.delete(code);
-  }
-  const code = randomUUID();
-  bootstrapGrants.set(code, { clientId, expiresAt: now + BOOTSTRAP_TTL_SECONDS * 1000 });
-  return { code, expiresAt: new Date(now + BOOTSTRAP_TTL_SECONDS * 1000).toISOString() };
-}
-
-function exchangeBootstrapGrant(code, clientId) {
-  const grant = bootstrapGrants.get(code);
-  if (!grant || grant.expiresAt <= Date.now() || grant.clientId !== clientId) {
-    if (grant?.expiresAt <= Date.now()) bootstrapGrants.delete(code);
-    return null;
-  }
-  bootstrapGrants.delete(code);
-  return issueSession(clientId);
 }
 
 function ownerStatePath(ownerId) {
@@ -344,23 +311,14 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       if (!safeEqual(body?.pairingToken, PAIRING_TOKEN)) return send(req, res, 401, { error: "pairing_denied" });
       if (!validClientId(body?.clientId)) return send(req, res, 400, { error: "invalid_client_id" });
-      return send(req, res, 201, issueSession(body.clientId));
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/bootstrap") {
-      if (!PAIRING_TOKEN || !SESSION_SECRET) return send(req, res, 503, { error: "core_auth_not_configured" });
-      const body = await readJson(req);
-      if (!safeEqual(body?.pairingToken, PAIRING_TOKEN)) return send(req, res, 401, { error: "pairing_denied" });
-      if (!validClientId(body?.clientId)) return send(req, res, 400, { error: "invalid_client_id" });
-      return send(req, res, 201, createBootstrapGrant(body.clientId));
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/session/bootstrap") {
-      const body = await readJson(req);
-      if (typeof body?.code !== "string" || !validClientId(body?.clientId)) return send(req, res, 400, { error: "invalid_bootstrap_request" });
-      const session = exchangeBootstrapGrant(body.code, body.clientId);
-      if (!session) return send(req, res, 401, { error: "bootstrap_denied" });
-      return send(req, res, 201, session);
+      const now = Math.floor(Date.now() / 1000);
+      const exp = now + SESSION_TTL_SECONDS;
+      const payload = { v: 1, ownerId: body.clientId, iat: now, exp, sid: randomUUID() };
+      return send(req, res, 201, {
+        sessionToken: signSession(payload),
+        ownerId: payload.ownerId,
+        expiresAt: new Date(exp * 1000).toISOString(),
+      });
     }
 
     const session = ownerSession(req);
