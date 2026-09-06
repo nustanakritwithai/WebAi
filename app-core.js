@@ -620,7 +620,136 @@ function agentErrorMessage(error, fallback) {
   if (error?.code === "agent_api_unavailable") return "Backend นี้ยังไม่มี Agent API จึงยังสร้าง/ควบคุมงานแบบ supervised agent ไม่ได้ · ใช้ Plan/Ask ได้ หรืออัปเดต Backend ให้รองรับ /api/agent/tasks";
   return `${fallback}: ${error?.message || "ไม่ทราบสาเหตุ"}`;
 }
-function showPlan(plan) { els.planEmpty.classList.add("hidden"); els.planBox.classList.remove("hidden"); els.planBox.textContent = typeof plan === "string" ? plan : JSON.stringify(plan, null, 2); selectTab("plan"); }
+const PREVIEW_LANGUAGES = new Set(["html", "css", "javascript", "js"]);
+
+function planText(plan) {
+  return typeof plan === "string" ? plan : JSON.stringify(plan, null, 2);
+}
+
+function fencedBlocks(text) {
+  const blocks = [];
+  const pattern = /```([^\r\n`]*)\r?\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = pattern.exec(text))) {
+    blocks.push({ text: text.slice(lastIndex, match.index), language: match[1].trim().toLowerCase(), code: match[2] });
+    lastIndex = pattern.lastIndex;
+  }
+  if (!blocks.length) return null;
+  blocks.push({ text: text.slice(lastIndex) });
+  return blocks;
+}
+
+function setCopyState(button, label, className = "") {
+  button.textContent = label;
+  button.className = `codeCardButton ${className}`.trim();
+}
+
+async function copyCode(button, code) {
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+    await navigator.clipboard.writeText(code);
+    setCopyState(button, "Copied", "success");
+  } catch {
+    setCopyState(button, "Copy failed", "error");
+  }
+  setTimeout(() => setCopyState(button, "Copy"), 1400);
+}
+
+function escapePreviewMarkup(value, tagName) {
+  return value.replace(new RegExp(`<\\/${tagName}`, "gi"), `<\\/${tagName}`);
+}
+
+function previewDocument(code, language) {
+  const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; font-src data:; media-src data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; navigate-to 'none';";
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
+  if (language === "html") {
+    return `<!doctype html><html><head>${meta}</head><body>${code}</body></html>`;
+  }
+  if (language === "css") {
+    return `<!doctype html><html><head>${meta}<style>${escapePreviewMarkup(code, "style")}</style></head><body><main class="preview-sample"><h1>CSS Preview</h1><p>Your CSS is running in a sandboxed preview.</p><button type="button">Sample button</button></main></body></html>`;
+  }
+  return `<!doctype html><html><head>${meta}<style>body{font:16px system-ui,sans-serif;margin:24px;color:#172033;background:#f4f7fb}#preview-root{white-space:pre-wrap}</style></head><body><main id="preview-root"></main><script>${escapePreviewMarkup(code, "script")}</script></body></html>`;
+}
+
+function openCodePreview(host, button, code, language) {
+  const existing = host.querySelector("iframe");
+  if (existing) {
+    existing.remove();
+    button.textContent = "Run Preview";
+    host.hidden = true;
+    return;
+  }
+  const iframe = document.createElement("iframe");
+  iframe.className = "codePreviewFrame";
+  iframe.setAttribute("sandbox", "allow-scripts");
+  iframe.setAttribute("referrerpolicy", "no-referrer");
+  iframe.setAttribute("title", `${language} code preview`);
+  iframe.srcdoc = previewDocument(code, language);
+  host.appendChild(iframe);
+  host.hidden = false;
+  button.textContent = "Hide Preview";
+}
+
+function renderCodeCard(language, code) {
+  const card = document.createElement("article");
+  card.className = "codeCard";
+
+  const header = document.createElement("header");
+  header.className = "codeCardHeader";
+  const label = document.createElement("span");
+  label.className = "codeCardLanguage";
+  label.textContent = language || "text";
+  const actions = document.createElement("div");
+  actions.className = "codeCardActions";
+
+  const copyButton = document.createElement("button");
+  copyButton.type = "button";
+  copyButton.className = "codeCardButton";
+  copyButton.textContent = "Copy";
+  copyButton.addEventListener("click", () => copyCode(copyButton, code));
+  actions.appendChild(copyButton);
+
+  let previewHost;
+  if (PREVIEW_LANGUAGES.has(language)) {
+    previewHost = document.createElement("div");
+    previewHost.className = "codePreviewHost";
+    previewHost.hidden = true;
+    const previewButton = document.createElement("button");
+    previewButton.type = "button";
+    previewButton.className = "codeCardButton previewButton";
+    previewButton.textContent = "Run Preview";
+    previewButton.addEventListener("click", () => openCodePreview(previewHost, previewButton, code, language));
+    actions.appendChild(previewButton);
+  }
+
+  header.append(label, actions);
+  const codePre = document.createElement("pre");
+  codePre.className = "codeCardCode";
+  const codeElement = document.createElement("code");
+  codeElement.textContent = code;
+  codePre.appendChild(codeElement);
+  card.append(header, codePre);
+  if (previewHost) card.appendChild(previewHost);
+  return card;
+}
+
+function renderPlanContent(text) {
+  const parts = fencedBlocks(text);
+  if (!parts) {
+    els.planBox.textContent = text;
+    els.planBox.classList.remove("hasCodeCards");
+    return;
+  }
+  els.planBox.replaceChildren();
+  els.planBox.classList.add("hasCodeCards");
+  parts.forEach((part) => {
+    if (part.text) els.planBox.appendChild(document.createTextNode(part.text));
+    if (part.code !== undefined) els.planBox.appendChild(renderCodeCard(part.language, part.code));
+  });
+}
+
+function showPlan(plan) { els.planEmpty.classList.add("hidden"); els.planBox.classList.remove("hidden"); renderPlanContent(planText(plan)); selectTab("plan"); }
 function selectTab(name) { $$(".tabBtn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name)); $$(".tabPanel").forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${name}`)); document.querySelector("#workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
 
 async function callPlan(goal) { els.activeAgent.textContent = "OpenTyphoon"; setProgress(1); addTimeline("Planning", "OpenTyphoon กำลังสร้าง structured plan", "working"); log("Request structured plan from OpenTyphoon"); const data = await request("/api/typhoon/chat", { messages: [{ role: "system", content: "Create a concise software implementation plan with acceptance criteria. Respond in the user's language." }, { role: "user", content: goal }], temperature: 0.2, max_tokens: 4096 }); const answer = data?.choices?.[0]?.message?.content || "(ไม่มีข้อความตอบกลับ)"; showPlan(answer); addTimeline("Plan ready", "Structured plan created", "ok"); log("Plan ready", "ok"); return data; }
