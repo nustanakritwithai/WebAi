@@ -117,6 +117,7 @@
           <label class="modeSelect">
             <span>MODE</span>
             <select id="taskMode" aria-label="Task mode">
+              <option value="agent" selected>Supervised Agent</option>
               <option value="auto">Auto</option>
               <option value="plan">Plan only</option>
               <option value="ask">Ask AI</option>
@@ -166,6 +167,18 @@
               <div><small>MODE</small><b id="activeMode">—</b></div>
               <div><small>ELAPSED</small><b id="elapsedTime">—</b></div>
             </div>
+
+            <div class="agentActions" aria-label="Supervised agent actions">
+              <div class="agentActionsCopy">
+                <span class="sectionKicker">SUPERVISED EXECUTION</span>
+                <p id="agentActionHint">Agent จะหยุดรอให้คุณตรวจแผนก่อน execution</p>
+              </div>
+              <div class="agentActionButtons">
+                <button id="approveExecutionBtn" class="primary" type="button" disabled>Approve &amp; Execute <span>→</span></button>
+                <button id="verifyTaskBtn" class="verifyBtn" type="button" disabled>Run Verification <span>✓</span></button>
+              </div>
+            </div>
+            <div id="agentError" class="agentError" role="alert" aria-live="polite" hidden></div>
           </article>
 
           <article class="timelineCard">

@@ -87,6 +87,19 @@ Git / PR / Deploy
 - `.env.example` — ตัวอย่างการตั้งค่า OpenTyphoon โดยไม่เก็บ secret
 - `.github/workflows/pages.yml` — GitHub Pages deployment workflow
 
+## Supervised Agent API
+
+Backend agent work is supervised and stateful. Creating a task only asks OpenTyphoon for a structured plan; it never runs OMP. A separate approval request is required before execution, and the task cannot become `completed` until the backend runs the fixed verification command (`npm test`) successfully.
+
+Endpoints:
+
+- `POST /api/tasks` with `{ "goal": "..." }` → creates a task in `awaiting_approval`
+- `GET /api/tasks` and `GET /api/tasks/:id` → reads persistent task state
+- `POST /api/tasks/:id/approve` → approves the saved plan and runs OMP
+- `POST /api/tasks/:id/verify` → runs verification and records evidence
+
+The same endpoints are available under `/api/agent/tasks`. Set `AGENT_STATE_PATH` to a server-only writable location. Keep `WEB_AUTH_TOKEN` configured when the backend is reachable beyond a trusted local machine; browser clients never provide provider credentials or execution commands.
+
 ## Roadmap
 
 | Version | Goal |
