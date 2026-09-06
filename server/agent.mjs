@@ -5,20 +5,22 @@ import { createNativeWorker } from "./native-worker.mjs";
 
 const MAX_GOAL_CHARS = 12_000;
 const MAX_TASKS = 200;
-const TERMINAL_STATES = new Set(["completed", "failed", "verification_failed"]);
+const TERMINAL_STATES = new Set(["completed", "failed", "verification_failed", "rolled_back"]);
 export const TASK_STATES = Object.freeze([
   "planning",
   "awaiting_approval",
   "executing",
   "awaiting_verification",
   "verifying",
+  "rolling_back",
+  "rolled_back",
   "completed",
   "verification_failed",
   "failed",
 ]);
 
-function httpError(message, status) {
-  return Object.assign(new Error(message), { status });
+function httpError(message, status, extra = {}) {
+  return Object.assign(new Error(message), { status, ...extra });
 }
 
 function now() {
@@ -44,6 +46,18 @@ function normalizeChangedFiles(value) {
     created: item?.created === true,
     changed: item?.changed !== false,
     ...(Number.isInteger(item?.bytes) && item.bytes >= 0 ? { bytes: Math.min(item.bytes, 500_000) } : {}),
+  })).filter((item) => item.path);
+}
+
+function normalizeSnapshotFiles(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 32).map((item) => ({
+    path: boundedText(item?.path, 240),
+    existed: item?.existed === true,
+    beforeSha256: typeof item?.beforeSha256 === "string" ? item.beforeSha256.slice(0, 64) : null,
+    afterSha256: typeof item?.afterSha256 === "string" ? item.afterSha256.slice(0, 64) : null,
+    ...(Number.isInteger(item?.bytesBefore) ? { bytesBefore: Math.max(0, item.bytesBefore) } : {}),
+    ...(Number.isInteger(item?.bytesAfter) ? { bytesAfter: Math.max(0, item.bytesAfter) } : {}),
   })).filter((item) => item.path);
 }
 
@@ -79,7 +93,15 @@ function parsePlan(raw, goal) {
   };
 }
 
-export function createAgentService({ requestModel, runWorker, runVerification, statePath = "" }) {
+export function createAgentService({
+  requestModel,
+  runWorker,
+  runVerification,
+  statePath = "",
+  ownerId = "",
+  snapshotStore = null,
+  withWorkspaceLock = null,
+}) {
   const tasks = new Map();
 
   if (typeof requestModel !== "function") throw new TypeError("requestModel must be a function");
@@ -93,9 +115,13 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
   const executeWorker = nativeWorker ? nativeWorker.run : runWorker;
   const workerName = nativeWorker ? "webai-native-v0.1" : "legacy-worker";
 
+  async function runLocked(operation) {
+    return typeof withWorkspaceLock === "function" ? withWorkspaceLock(operation) : operation();
+  }
+
   function persist() {
     if (!statePath) return;
-    const snapshot = JSON.stringify({ version: 1, tasks: [...tasks.values()] }, null, 2);
+    const snapshot = JSON.stringify({ version: 2, tasks: [...tasks.values()] }, null, 2);
     mkdirSync(dirname(statePath), { recursive: true });
     const temporary = `${statePath}.tmp`;
     writeFileSync(temporary, snapshot, { encoding: "utf8", mode: 0o600 });
@@ -119,6 +145,8 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
           plan: task.plan && typeof task.plan === "object" ? task.plan : null,
           approval: task.approval && typeof task.approval === "object" ? task.approval : null,
           worker: task.worker && typeof task.worker === "object" ? task.worker : null,
+          executions: Array.isArray(task.executions) ? task.executions.slice(-20) : [],
+          rollback: task.rollback && typeof task.rollback === "object" ? task.rollback : null,
           verification: task.verification && typeof task.verification === "object" ? task.verification : null,
           error: typeof task.error === "string" ? boundedText(task.error, 300) : undefined,
           events: Array.isArray(task.events) ? task.events.slice(-100) : [{ at: now(), type: "state_restored" }],
@@ -153,6 +181,8 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
       updatedAt: now(),
       plan: null,
       worker: null,
+      executions: [],
+      rollback: null,
       verification: null,
       events: [{ at: now(), type: "task_created" }],
     };
@@ -180,16 +210,87 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
     }
   }
 
+  async function runNativeTransaction(task, execution, prompt) {
+    if (!nativeWorker || !snapshotStore) return runLocked(() => executeWorker(prompt));
+    if (!ownerId) throw httpError("snapshot_owner_not_configured", 500);
+
+    return runLocked(async () => {
+      const prepared = await nativeWorker.prepare(prompt);
+      const targets = prepared.manifest.files.map((file) => file.path);
+      const captured = await snapshotStore.createSnapshot({
+        ownerId,
+        taskId: task.id,
+        executionId: execution.executionId,
+        files: targets,
+      });
+
+      execution.snapshotId = captured.snapshot.snapshotId;
+      execution.status = "snapshotted";
+      execution.files = normalizeSnapshotFiles(captured.snapshot.files);
+      record(task, "snapshot_captured", {
+        executionId: execution.executionId,
+        snapshotId: execution.snapshotId,
+        files: execution.files.length,
+      });
+
+      let result;
+      try {
+        result = await nativeWorker.apply(prepared);
+      } catch (error) {
+        execution.status = "failed";
+        execution.completedAt = now();
+        throw error;
+      }
+
+      let after;
+      try {
+        after = await snapshotStore.recordAfter(captured.ref);
+      } catch (error) {
+        try {
+          const restored = await snapshotStore.restoreCaptured(captured.ref);
+          execution.status = "rolled_back_on_error";
+          execution.rollback = restored.rollback;
+        } catch {
+          execution.status = "recovery_failed";
+        }
+        execution.completedAt = now();
+        throw error;
+      }
+
+      execution.status = "applied";
+      execution.completedAt = now();
+      execution.files = normalizeSnapshotFiles(after.files);
+      return result;
+    });
+  }
+
   async function approveAndExecute(id) {
     const task = getMutable(id);
     if (task.status !== "awaiting_approval") throw httpError("task_not_awaiting_approval", 409);
     if (!task.plan?.steps?.length) throw httpError("task_plan_missing", 409);
     task.approval = { approvedAt: now() };
     task.status = "executing";
-    record(task, "execution_approved", { worker: workerName });
+    task.rollback = null;
+    const execution = {
+      executionId: `exec-${randomUUID()}`,
+      status: "running",
+      startedAt: now(),
+      completedAt: null,
+      snapshotId: null,
+      files: [],
+      rollback: null,
+    };
+    task.executions.push(execution);
+    if (task.executions.length > 20) task.executions.splice(0, task.executions.length - 20);
+    record(task, "execution_approved", { worker: workerName, executionId: execution.executionId });
     const planText = task.plan.steps.map((step, index) => `${index + 1}. ${step.title}${step.acceptance ? ` Acceptance: ${step.acceptance}` : ""}`).join("\n");
+    const prompt = `Goal: ${task.goal}\n\nApproved plan:\n${planText}\n\nImplement only the approved task inside the configured workspace. Return bounded evidence of changed files. Do not claim DONE; verification is a separate gate.`;
     try {
-      const result = await executeWorker(`Goal: ${task.goal}\n\nApproved plan:\n${planText}\n\nImplement only the approved task inside the configured workspace. Return bounded evidence of changed files. Do not claim DONE; verification is a separate gate.`);
+      const result = await runNativeTransaction(task, execution, prompt);
+      if (execution.status === "running") {
+        execution.status = "applied";
+        execution.completedAt = now();
+      }
       task.worker = {
         completedAt: now(),
         worker: boundedText(result?.worker || workerName, 100),
@@ -197,12 +298,19 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
         outputCaptured: typeof result?.content === "string" && result.content.length > 0,
       };
       task.status = "awaiting_verification";
-      record(task, "worker_finished", { worker: task.worker.worker, changedFiles: task.worker.changedFiles.length });
+      record(task, "worker_finished", {
+        worker: task.worker.worker,
+        changedFiles: task.worker.changedFiles.length,
+        executionId: execution.executionId,
+        snapshotId: execution.snapshotId,
+      });
       return taskView(task);
     } catch (error) {
+      if (!["rolled_back_on_error", "recovery_failed"].includes(execution.status)) execution.status = "failed";
+      execution.completedAt ||= now();
       task.status = "failed";
       task.error = "worker_failed";
-      record(task, "worker_failed", { error: task.error, worker: workerName });
+      record(task, "worker_failed", { error: task.error, worker: workerName, executionId: execution.executionId });
       throw httpError(task.error, Number(error?.status) || 502);
     }
   }
@@ -213,7 +321,7 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
     task.status = "verifying";
     record(task, "verification_started");
     try {
-      const evidence = await runVerification(task);
+      const evidence = await runLocked(() => runVerification(task));
       const normalizedEvidence = {
         ok: evidence?.ok === true,
         ...(typeof evidence?.command === "string" ? { command: boundedText(evidence.command, 200) } : {}),
@@ -233,6 +341,53 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
     }
   }
 
+  async function rollback(id) {
+    const task = getMutable(id);
+    if (task.status === "completed") throw httpError("completed_task_not_rollbackable", 409);
+    if (!["awaiting_verification", "verification_failed", "failed"].includes(task.status)) throw httpError("task_not_rollbackable", 409);
+    if (!snapshotStore || !ownerId) throw httpError("rollback_not_configured", 503);
+
+    const execution = [...task.executions].reverse().find((item) => item?.snapshotId && item.status === "applied");
+    if (!execution) throw httpError("rollback_snapshot_missing", 409);
+
+    const previousStatus = task.status;
+    task.status = "rolling_back";
+    record(task, "rollback_started", { executionId: execution.executionId, snapshotId: execution.snapshotId });
+    try {
+      const result = await runLocked(() => snapshotStore.rollback({
+        ownerId,
+        taskId: task.id,
+        executionId: execution.executionId,
+        snapshotId: execution.snapshotId,
+      }));
+      execution.status = "rolled_back";
+      execution.rollback = result.rollback;
+      task.rollback = {
+        completedAt: now(),
+        executionId: execution.executionId,
+        snapshotId: execution.snapshotId,
+        status: "passed",
+        restoredFiles: result.rollback?.restoredFiles || 0,
+        verified: result.rollback?.verified === true,
+      };
+      task.status = "rolled_back";
+      record(task, "rollback_completed", { executionId: execution.executionId, restoredFiles: task.rollback.restoredFiles });
+      return taskView(task);
+    } catch (error) {
+      task.status = previousStatus;
+      task.rollback = {
+        completedAt: now(),
+        executionId: execution.executionId,
+        snapshotId: execution.snapshotId,
+        status: "failed",
+        error: boundedText(error?.message || "rollback_failed", 120),
+        ...(Array.isArray(error?.files) ? { conflicts: error.files.slice(0, 16).map((path) => boundedText(path, 240)) } : {}),
+      };
+      record(task, "rollback_failed", { executionId: execution.executionId, error: task.rollback.error });
+      throw httpError(error?.message || "rollback_failed", Number(error?.status) || 500, Array.isArray(error?.files) ? { files: error.files } : {});
+    }
+  }
+
   restore();
   return {
     status: () => ({
@@ -241,10 +396,12 @@ export function createAgentService({ requestModel, runWorker, runVerification, s
       taskCount: tasks.size,
       worker: workerName,
       nativeWorkerEnabled,
+      snapshotConfigured: Boolean(snapshotStore),
     }),
     createTask,
     approveAndExecute,
     verify,
+    rollback,
     getTask: (id) => taskView(getMutable(id)),
     listTasks: () => [...tasks.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(taskView),
     terminalStates: TERMINAL_STATES,
