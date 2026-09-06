@@ -1,36 +1,71 @@
 # WebAi Native Core
 
-This branch continues from PR #6 (`feat: add supervised agent workflow`) and deliberately removes BrowserPod / Browser Linux from the active product path.
+WebAi continues from PR #6 (`feat: add supervised agent workflow`) but now separates the OpenTyphoon secret proxy from task execution completely.
 
-## Architecture
+## Architecture lock
 
 ```text
-User Goal
-   ↓
-WebAi Core state machine
-   ↓
-OpenTyphoon Planner
-   ↓
-AWAITING APPROVAL
-   ↓
-WebAi Native Worker
-   ↓
-Workspace changes
-   ↓
-AWAITING VERIFICATION
-   ↓
-Deterministic Verification
-   ↓
-DONE only after PASS
+GitHub Pages / WebAi UI
+   │
+   ├── HTTPS → Host A: Secret Proxy (`server/index.mjs`)
+   │             ├─ owns TYPHOON_API_KEY
+   │             ├─ /api/health
+   │             ├─ /api/typhoon/chat
+   │             ├─ /api/chat
+   │             └─ /api/plan
+   │
+   └── HTTPS → Host B: WebAi Core (`server/core.mjs`)
+                 ├─ signed owner sessions
+                 ├─ per-owner task state
+                 ├─ PR #6 supervised lifecycle
+                 ├─ WebAi Native Worker
+                 ├─ workspace
+                 └─ deterministic verification
 ```
 
-The lifecycle, persistence, approval gate, and verification gate come from PR #6. BrowserPod and browser-Linux execution are not part of this architecture.
+Host A must not contain a workspace, task database, Native Worker, verification process, or task endpoints. Host B must not contain the OpenTyphoon provider API key; it reaches OpenTyphoon only through Host A.
+
+## Supervised lifecycle
+
+```text
+Goal
+ ↓
+OpenTyphoon plan via Secret Proxy
+ ↓
+AWAITING APPROVAL
+ ↓
+WebAi Native Worker
+ ↓
+Workspace changes
+ ↓
+AWAITING VERIFICATION
+ ↓
+Deterministic Verification
+ ↓
+PASS → DONE
+FAIL → not DONE
+```
+
+The lifecycle, persistence, approval gate, and verification gate come from PR #6.
+
+## Owner/session authorization
+
+Task APIs are not protected by CORS alone. `server/core.mjs` requires a signed `x-webai-session` for all task operations.
+
+1. The browser keeps a stable random `clientId`.
+2. The user provides `WEBAI_CORE_PAIRING_TOKEN` only when pairing.
+3. `/api/session` exchanges it for a short-lived HMAC-signed session token.
+4. The pairing token is not stored by the WebAi UI.
+5. Each owner gets a separate persisted task-state file derived from a SHA-256 hash of the owner id.
+6. A valid session for owner B cannot read, approve, verify, or list owner A's tasks.
+
+`WEBAI_CORE_SESSION_SECRET` must be a strong random secret stored only on the Core/Worker host.
 
 ## Native Worker V0.1
 
-`server/native-worker.mjs` is our own execution engine. It is intentionally narrower than a general shell agent:
+`server/native-worker.mjs` is WebAi's own guarded file execution engine. It is intentionally narrower than a general shell agent:
 
-- uses OpenTyphoon to produce a structured file manifest;
+- uses OpenTyphoon through the configured proxy to produce a structured file manifest;
 - reads only bounded text context from the configured workspace;
 - ignores hidden directories, `.git`, `.github`, `.webai`, `node_modules`, build outputs, and large files;
 - redacts common API-key patterns before context is sent to the model;
@@ -39,24 +74,30 @@ The lifecycle, persistence, approval gate, and verification gate come from PR #6
 - writes atomically and performs best-effort rollback if a multi-file write fails;
 - never accepts model-provided shell commands or delete operations in V0.1.
 
-## Production selection
+Task state stores only bounded worker metadata such as worker name and changed-file metadata. Raw model output and raw file contents are not persisted in task state.
 
-Set:
+## Starting each service
+
+Secret Proxy host:
 
 ```text
-WEBAI_NATIVE_WORKER_ENABLED=true
-WEBAI_WORKSPACE=/absolute/path/to/workspace
+npm run start:proxy
 ```
 
-When enabled, the PR #6 supervised service routes `Approve & Run Core` to `WebAi Native Worker V0.1`. The old worker dependency remains only as a disabled fallback path while migration is completed. The browser UI no longer exposes OMP or BrowserPod.
+WebAi Core / isolated worker host:
 
-Worker evidence stored in task state is bounded to safe metadata: worker name, summary, changed file paths, created/changed flags, and byte counts. Raw model output and raw file contents are not copied into task state.
+```text
+npm run start:core
+```
 
-## Next milestone
+See `.env.example` for the two separate environment surfaces. Do not copy Core workspace/task environment variables onto the VPS Secret Proxy.
 
-1. Expose a first-class `nativeWorker` capability in `/api/health`.
-2. Remove the legacy OMP execution endpoint and OMP code from `server/index.mjs` after native acceptance passes.
-3. Add a dedicated workspace snapshot / rollback checkpoint before every execution.
-4. Add retry-from-verification-failure without bypassing approval history.
-5. Expand verification from one `npm test` command into build / unit / integration / security / regression gates.
-6. Add file-level diff evidence to the UI without exposing secrets or raw environment data.
+## Next milestones
+
+1. Add workspace snapshot + rollback before every approved execution.
+2. Add file-level diff evidence without leaking secret content.
+3. Split Verification into build / unit / integration / security / regression gates.
+4. Add retry/fix loop that preserves approval history.
+5. Add ECC policy selection before execution.
+6. Add Hermes-style memory only from verified outcomes.
+7. Add Harpoon performance evidence and before/after regression metrics.
