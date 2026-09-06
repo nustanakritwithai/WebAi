@@ -182,10 +182,9 @@ function applyActionState() {
   const canTyphoon = state.connected && state.typhoonConfigured && !state.busy;
   const canOmp = state.connected && state.ompEnabled && !state.busy;
   const hasGoal = !!els.input.value.trim();
-  const coreTaskReady = state.agentAvailable === true && window.WebAiCoreBridge?.isTaskReady?.() === true;
 
   let enabled = false;
-  if (mode === "agent") enabled = canTyphoon && coreTaskReady && hasGoal;
+  if (mode === "agent") enabled = canTyphoon && hasGoal;
   else if (mode === "execute") enabled = canOmp && hasGoal;
   else enabled = canTyphoon && hasGoal;
 
@@ -204,10 +203,6 @@ function applyActionState() {
     els.taskStatus.textContent = "รอ Typhoon key";
     els.taskStatus.className = "pill warn";
     els.connectionHint.textContent = "Backend ออนไลน์ แต่ยังไม่มี OpenTyphoon key";
-  } else if (mode === "agent" && !coreTaskReady) {
-    els.taskStatus.textContent = "รอ WebAi Core";
-    els.taskStatus.className = "pill warn";
-    els.connectionHint.textContent = "เชื่อมต่อ WebAi Core และ Pairing ก่อนสร้าง Task";
   } else {
     els.taskStatus.textContent = "พร้อมรับงาน";
     els.taskStatus.className = "pill ok";
@@ -215,7 +210,7 @@ function applyActionState() {
   }
 
   const modeText = {
-    agent: coreTaskReady ? "Create Core Task → Review Plan" : "เชื่อมต่อ WebAi Core ก่อน",
+    agent: "Run Agent → Ask Typhoon",
     auto: state.ompEnabled ? "Run Task → Plan + Execute" : "Run Task → Ask Typhoon",
     plan: "Run Task → Generate Plan",
     ask: "Run Task → Ask Typhoon",
@@ -248,13 +243,12 @@ function setAgentError(message = "") {
 function updateAgentActions() {
   const task = state.agentTask;
   const isAgentMode = els.mode.value === "agent";
-  const coreTaskReady = state.agentAvailable === true && window.WebAiCoreBridge?.isTaskReady?.() === true;
-  const canApprove = isAgentMode && coreTaskReady && !state.busy && task?.status === "awaiting_approval";
-  const canVerify = isAgentMode && coreTaskReady && !state.busy && task?.status === "awaiting_verification";
+  const canApprove = isAgentMode && !state.busy && task?.status === "awaiting_approval";
+  const canVerify = isAgentMode && !state.busy && task?.status === "awaiting_verification";
   if (els.approveExecution) els.approveExecution.disabled = !canApprove;
   if (els.verifyTask) els.verifyTask.disabled = !canVerify;
   if (!els.agentActionHint) return;
-  if (!task && isAgentMode && !coreTaskReady) els.agentActionHint.textContent = "เชื่อมต่อ WebAi Core และ Pairing ก่อนสร้าง Task";
+  if (!task && isAgentMode) els.agentActionHint.textContent = "Agent ใช้ Typhoon ผ่าน VPS โดยตรง";
   else if (!task) els.agentActionHint.textContent = "Agent จะหยุดรอให้คุณตรวจแผนก่อน execution";
   else if (task.status === "awaiting_approval") els.agentActionHint.textContent = "ตรวจ Plan ด้านล่าง แล้วอนุมัติเมื่อพร้อมให้ Agent แก้ไฟล์จริง";
   else if (task.status === "awaiting_verification") els.agentActionHint.textContent = "Execution จบแล้ว กด Run Verification เพื่อพิสูจน์ผลลัพธ์ก่อน DONE";
@@ -642,7 +636,8 @@ async function runTask() {
   setBusy(true, mode === "agent" ? "กำลังวางแผน Agent" : "กำลังทำงาน");
   try {
     if (mode === "agent") {
-      await createAgentTask(goal);
+      await callChat(goal, false);
+      finishTask("Agent ตอบผ่าน Typhoon สำเร็จ", true);
       return;
     }
     if (mode === "plan") { await callPlan(goal); finishTask("แผนพร้อมแล้ว — ยังไม่ถือว่า DONE จนกว่าจะผ่าน Verification", true); return; }
