@@ -22,6 +22,7 @@ jobs:
           node --check server/core.mjs
           node --check server/agent.mjs
           node --check server/native-worker.mjs
+          node --check server/snapshot-store.mjs
           node --check app.js
           node --check app-core.js
           node --check capability-bridge.js
@@ -31,6 +32,7 @@ jobs:
           node --check scripts/core-smoke.mjs
           node --check scripts/agent-smoke.mjs
           node --check scripts/native-worker-smoke.mjs
+          node --check scripts/snapshot-smoke.mjs
       - name: Secret proxy contract
         run: |
           grep -q 'webai-typhoon-proxy' server/index.mjs
@@ -41,6 +43,7 @@ jobs:
           ! grep -q 'node:child_process' server/index.mjs
           ! grep -q '/api/tasks' server/index.mjs
           ! grep -q 'nativeWorker' server/index.mjs
+          ! grep -q 'snapshot' server/index.mjs
           ! grep -q 'AGENT_STATE' server/index.mjs
       - name: WebAi Core contract
         run: |
@@ -55,6 +58,14 @@ jobs:
           grep -q 'webai-native-v0.1' server/native-worker.mjs
           grep -q 'native_path_denied' server/native-worker.mjs
           grep -q 'native_symlink_denied' server/native-worker.mjs
+      - name: Snapshot foundation contract
+        run: |
+          grep -q 'createSnapshotStore' server/snapshot-store.mjs
+          grep -q 'rollback_conflict' server/snapshot-store.mjs
+          grep -q 'beforeSha256' server/snapshot-store.mjs
+          grep -q 'afterSha256' server/snapshot-store.mjs
+          grep -q 'snapshot_store_inside_workspace' server/snapshot-store.mjs
+          ! grep -q 'TYPHOON_API_KEY' server/snapshot-store.mjs
       - name: Frontend split contract
         run: |
           grep -q 'executionTarget = "webai-native"' app.js
