@@ -6,6 +6,7 @@ import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { URL } from "node:url";
 import { createAgentService } from "./agent.mjs";
+import { recoverOwnerState } from "./core-recovery.mjs";
 import { createSnapshotStore } from "./snapshot-store.mjs";
 
 const PORT = Number(process.env.CORE_PORT || "8790");
@@ -266,18 +267,25 @@ async function unavailableWorker() {
 
 function serviceForOwner(ownerId) {
   if (services.has(ownerId)) return services.get(ownerId);
-  const service = createAgentService({
-    requestModel,
-    runWorker: unavailableWorker,
-    runVerification,
-    statePath: ownerStatePath(ownerId),
-    ownerId,
-    snapshotStore,
-    withWorkspaceLock,
+  const statePath = ownerStatePath(ownerId);
+  const pending = (async () => {
+    await recoverOwnerState({ ownerId, statePath, snapshotStore, withWorkspaceLock });
+    return createAgentService({
+      requestModel,
+      runWorker: unavailableWorker,
+      runVerification,
+      statePath,
+      ownerId,
+      snapshotStore,
+      withWorkspaceLock,
+    });
+  })().catch((error) => {
+    services.delete(ownerId);
+    throw error;
   });
-  services.set(ownerId, service);
+  services.set(ownerId, pending);
   if (services.size > 100) services.delete(services.keys().next().value);
-  return service;
+  return pending;
 }
 
 function coreCapabilities() {
@@ -287,6 +295,7 @@ function coreCapabilities() {
     webaiCore: { enabled: true, configured: validProxyBase() && authReady, lifecycle: "supervised" },
     nativeWorker: { enabled: NATIVE_ENABLED, configured: NATIVE_ENABLED && workspaceReady, mode: "guarded-file-worker" },
     snapshotStore: { enabled: true, configured: workspaceReady && Boolean(SNAPSHOT_DIR), mode: "durable-transaction" },
+    recovery: { enabled: true, configured: workspaceReady && Boolean(SNAPSHOT_DIR), mode: "pre-service-reconcile" },
     verification: { enabled: true, configured: workspaceReady, command: "npm test" },
     taskStore: { enabled: true, configured: Boolean(STATE_DIR), ownership: "signed-session" },
     sessionAuth: { enabled: true, configured: authReady, ttlSeconds: SESSION_TTL_SECONDS },
@@ -316,6 +325,7 @@ const server = http.createServer(async (req, res) => {
         configured: capabilities.webaiCore.configured,
         nativeWorkerConfigured: capabilities.nativeWorker.configured,
         snapshotConfigured: capabilities.snapshotStore.configured,
+        recoveryConfigured: capabilities.recovery.configured,
         authConfigured: capabilities.sessionAuth.configured,
         capabilities,
       });
@@ -337,7 +347,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const session = ownerSession(req);
-    const service = serviceForOwner(session.ownerId);
+    const service = await serviceForOwner(session.ownerId);
     const isCollection = url.pathname === "/api/tasks";
     const match = url.pathname.match(/^\/api\/tasks\/([^/]+)(?:\/(approve|verify|rollback))?$/);
 
@@ -369,5 +379,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   const caps = coreCapabilities();
   console.log(`WebAi Core listening on 127.0.0.1:${PORT}`);
-  console.log(`Proxy: ${validProxyBase()} | NativeWorker: ${caps.nativeWorker.configured} | Snapshot: ${caps.snapshotStore.configured} | SessionAuth: ${caps.sessionAuth.configured}`);
+  console.log(`Proxy: ${validProxyBase()} | NativeWorker: ${caps.nativeWorker.configured} | Snapshot: ${caps.snapshotStore.configured} | Recovery: ${caps.recovery.configured} | SessionAuth: ${caps.sessionAuth.configured}`);
 });
