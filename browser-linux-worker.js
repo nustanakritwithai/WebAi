@@ -1,21 +1,26 @@
 (() => {
   const RUNTIME_URL = "https://rt.browserpod.io/3.0.1/browserpod.js";
-  const STORAGE_KEY = "webai-browser-linux-v01";
+  const STORAGE_KEY = "webai-browser-linux-v02";
   const REPO_URL = "https://github.com/nustanakritwithai/WebAi.git";
   const WORKSPACE = "/workspace/WebAi";
   const PREVIEW_PORT = 4173;
-  const sessionKey = "webai.browserpod.key.session";
-  const localKey = "webai.browserpod.key.local";
-  const autoBootKey = "webai.browserpod.autoboot";
+  const SESSION_KEY = "webai.browserpod.key.session";
+  const LOCAL_KEY = "webai.browserpod.key.local";
+  const AUTOBOOT_KEY = "webai.browserpod.autoboot";
 
   const state = {
     pod: null,
-    terminal: null,
-    captureTerminal: null,
+    commandTerminal: null,
+    shellTerminal: null,
+    previewTerminal: null,
+    captureSink: null,
     booting: false,
+    reloadPending: false,
     ready: false,
+    preflightReady: false,
     workspaceReady: false,
     shellStarted: false,
+    operation: "",
     ompReady: false,
     ompVersion: "",
     portalUrl: "",
@@ -33,6 +38,14 @@
     document.head.appendChild(link);
   }
 
+  function setInfo(text, kind = "info") {
+    const info = $("#browserPortalInfo");
+    if (!info) return;
+    info.classList.add("show");
+    info.dataset.operation = kind;
+    info.textContent = text;
+  }
+
   function injectPanel() {
     if ($("#browserLinuxWorker")) return;
     const lowerGrid = $(".lowerGrid");
@@ -44,9 +57,9 @@
     section.innerHTML = `
       <div class="browserLinuxHead">
         <div>
-          <span class="sectionKicker">CLIENT-SIDE EXECUTION</span>
+          <span class="sectionKicker">CLIENT-SIDE EXECUTION · MOBILE SAFE</span>
           <h2>Browser Linux Worker</h2>
-          <p>Linux-like sandbox, Git, Shell, Workspace และ Preview ทำงานบนอุปกรณ์นี้ ไม่ใช่บน VPS</p>
+          <p>Linux sandbox, Git, Shell, Workspace และ Preview ทำงานบนอุปกรณ์นี้ โดยลด process/terminal สำหรับมือถือ</p>
         </div>
         <span id="browserWorkerBadge" class="browserLinuxBadge warn">NOT BOOTED</span>
       </div>
@@ -59,7 +72,7 @@
             <label><input id="rememberBrowserPodKey" type="checkbox"> จำ key บนอุปกรณ์นี้</label>
             <button id="forgetBrowserPodKey" class="ghostBtn" type="button">ลืม key</button>
           </div>
-          <div class="browserLinuxNote"><b>คนละ key กับ OpenTyphoon</b> — BrowserPod key ใช้ boot sandbox ใน browser เท่านั้น และจะไม่ถูก commit ลง Git หรือส่งไป VPS</div>
+          <div class="browserLinuxNote"><b>Mobile Safe Mode</b> — Boot จะใช้ command terminal เพียง 1 ตัว และจะสร้าง interactive shell เฉพาะเมื่อกด Open Shell</div>
           <div class="browserLinuxStatusGrid">
             <div class="browserLinuxStatus"><i id="workerIsolationDot"></i><div><small>ISOLATION</small><b id="workerIsolationText">Checking</b></div></div>
             <div class="browserLinuxStatus"><i id="workerLinuxDot"></i><div><small>LINUX</small><b id="workerLinuxText">Stopped</b></div></div>
@@ -70,22 +83,23 @@
             <button id="bootBrowserLinux" class="primaryWorker" type="button">Boot Browser Linux</button>
             <button id="prepareBrowserWorkspace" type="button" disabled>Clone / Sync WebAi</button>
             <button id="probeBrowserOmp" type="button" disabled>Check OMP</button>
-            <button id="startBrowserShell" type="button" disabled>Open Shell</button>
             <button id="startBrowserPreview" type="button" disabled>Start Preview</button>
-            <a class="browserLinuxLink" href="https://console.browserpod.io" target="_blank" rel="noreferrer">Get BrowserPod key</a>
+            <button id="startBrowserShell" type="button" disabled>Open Shell</button>
+            <button id="resetBrowserWorker" class="ghostBtn" type="button">Reset Worker</button>
+            <a class="browserLinuxLink" href="https://console.browserpod.io" target="_blank" rel="noreferrer">BrowserPod Console</a>
           </div>
           <div id="browserPortalInfo" class="browserLinuxPortal"></div>
         </div>
         <div class="browserLinuxTerminalWrap">
           <div class="browserLinuxTerminalHead">
-            <div><b>Local Linux Terminal</b><small>Browser sandbox · persistent storageKey</small></div>
+            <div><b>Local Linux Terminal</b><small>สร้างเมื่อกด Open Shell เพื่อลด RAM บนมือถือ</small></div>
             <span id="browserWorkerRuntime">BrowserPod 3.0.1</span>
           </div>
           <div id="browserLinuxTerminal" class="browserLinuxTerminal"></div>
         </div>
       </div>
       <div class="browserLinuxCompatibility">
-        <b>OMP compatibility gate:</b> WebAi จะไม่ขึ้น OMP = Ready จนพบ <code>omp</code> ที่รันได้จริงใน browser sandbox. OMP release ปัจจุบันเป็น native Linux x64/arm64 ขณะที่ BrowserPod รัน native binaries แบบนั้นตรง ๆ ไม่ได้; panel นี้เตรียม execution layer ให้พร้อมสำหรับ browser/Wasm build โดยไม่ปลอมสถานะ.
+        <b>OMP compatibility gate:</b> WebAi จะไม่ขึ้น OMP = Ready จน <code>omp --version</code> รันได้จริงใน browser sandbox.
       </div>`;
 
     lowerGrid.parentNode.insertBefore(section, lowerGrid);
@@ -93,6 +107,7 @@
     restoreKey();
     refreshIsolationStatus();
     installTeamWorkerRow();
+    writeTerminalNotice("Worker ยังไม่เปิด · Boot Browser Linux ก่อน");
   }
 
   function setStatus(dotId, textId, kind, text) {
@@ -110,19 +125,24 @@
   }
 
   function setButtons() {
+    const locked = !!state.operation || state.booting || state.shellStarted;
     const boot = $("#bootBrowserLinux");
     const prepare = $("#prepareBrowserWorkspace");
     const probe = $("#probeBrowserOmp");
-    const shell = $("#startBrowserShell");
     const preview = $("#startBrowserPreview");
+    const shell = $("#startBrowserShell");
+
     if (boot) {
       boot.disabled = state.booting || state.ready;
       boot.textContent = state.booting ? "Booting…" : state.ready ? "Linux Running" : "Boot Browser Linux";
     }
-    if (prepare) prepare.disabled = !state.ready;
-    if (probe) probe.disabled = !state.ready;
-    if (shell) shell.disabled = !state.ready || state.shellStarted;
-    if (preview) preview.disabled = !state.workspaceReady;
+    if (prepare) prepare.disabled = !state.ready || locked;
+    if (probe) probe.disabled = !state.ready || locked;
+    if (preview) preview.disabled = !state.workspaceReady || locked;
+    if (shell) {
+      shell.disabled = !state.workspaceReady || locked;
+      shell.textContent = state.shellStarted ? "Shell Open" : "Open Shell";
+    }
   }
 
   function saveKey() {
@@ -130,41 +150,53 @@
     const remember = $("#rememberBrowserPodKey");
     const value = input?.value.trim() || "";
     if (!value) return "";
-    sessionStorage.setItem(sessionKey, value);
-    if (remember?.checked) localStorage.setItem(localKey, value);
-    else localStorage.removeItem(localKey);
+    sessionStorage.setItem(SESSION_KEY, value);
+    if (remember?.checked) localStorage.setItem(LOCAL_KEY, value);
+    else localStorage.removeItem(LOCAL_KEY);
     return value;
   }
 
   function restoreKey() {
-    const remembered = localStorage.getItem(localKey) || "";
-    const session = sessionStorage.getItem(sessionKey) || "";
-    const value = session || remembered;
+    const remembered = localStorage.getItem(LOCAL_KEY) || "";
+    const session = sessionStorage.getItem(SESSION_KEY) || "";
     const input = $("#browserPodKey");
     const remember = $("#rememberBrowserPodKey");
-    if (input) input.value = value;
+    if (input) input.value = session || remembered;
     if (remember) remember.checked = Boolean(remembered);
   }
 
   function forgetKey() {
-    sessionStorage.removeItem(sessionKey);
-    localStorage.removeItem(localKey);
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(LOCAL_KEY);
     const input = $("#browserPodKey");
     const remember = $("#rememberBrowserPodKey");
     if (input) input.value = "";
     if (remember) remember.checked = false;
   }
 
+  function writeTerminalNotice(text) {
+    const target = $("#browserLinuxTerminal");
+    if (!target || state.shellTerminal) return;
+    const line = document.createElement("pre");
+    line.textContent = text;
+    line.style.cssText = "margin:0;color:#8fb7c5;white-space:pre-wrap;font:12px/1.65 ui-monospace,monospace;padding:12px";
+    target.replaceChildren(line);
+  }
+
   async function ensureIsolation() {
     if (window.crossOriginIsolated) return true;
     if (!window.isSecureContext || !("serviceWorker" in navigator)) {
-      throw new Error("Browser นี้ไม่รองรับ cross-origin isolation/service worker ที่ Browser Linux ต้องใช้");
+      throw new Error("Browser นี้ไม่รองรับ cross-origin isolation/service worker");
     }
+
+    state.reloadPending = true;
+    setBadge("warn", "PREPARING ISOLATION");
+    setStatus("#workerIsolationDot", "#workerIsolationText", "work", "Preparing");
+    setInfo("กำลังเปิด isolation · หน้าเว็บจะ reload เพียง 1 ครั้ง", "working");
 
     await navigator.serviceWorker.register("./coi-sw.js", { scope: "./" });
     await navigator.serviceWorker.ready;
-
-    sessionStorage.setItem(autoBootKey, "1");
+    sessionStorage.setItem(AUTOBOOT_KEY, "1");
     location.reload();
     return false;
   }
@@ -172,10 +204,8 @@
   function refreshIsolationStatus() {
     if (window.crossOriginIsolated) {
       setStatus("#workerIsolationDot", "#workerIsolationText", "ok", "Ready");
-      return;
-    }
-    if (window.isSecureContext && "serviceWorker" in navigator) {
-      setStatus("#workerIsolationDot", "#workerIsolationText", "warn", "Needs reload");
+    } else if (window.isSecureContext && "serviceWorker" in navigator) {
+      setStatus("#workerIsolationDot", "#workerIsolationText", "warn", "Needs one reload");
     } else {
       setStatus("#workerIsolationDot", "#workerIsolationText", "bad", "Unsupported");
     }
@@ -203,12 +233,65 @@
     if (label) label.textContent = text;
   }
 
+  async function ensureCommandTerminal() {
+    if (state.commandTerminal) return state.commandTerminal;
+    if (!state.pod) throw new Error("Browser Linux ยังไม่ boot");
+
+    const decoder = new TextDecoder();
+    state.commandTerminal = await state.pod.createCustomTerminal({
+      cols: 96,
+      rows: 24,
+      onOutput(buffer) {
+        if (state.captureSink) state.captureSink(decoder.decode(buffer, { stream: true }));
+      },
+    });
+    return state.commandTerminal;
+  }
+
+  async function runCapture(executable, args = [], opts = {}) {
+    if (!state.pod) throw new Error("Browser Linux ยังไม่ boot");
+    if (state.shellStarted) throw new Error("Shell เปิดอยู่ · Reset Worker ก่อนรัน background task");
+
+    const terminal = await ensureCommandTerminal();
+    let output = "";
+    state.captureSink = (chunk) => { output += chunk; };
+    try {
+      await state.pod.run(executable, args, {
+        terminal,
+        echo: false,
+        cwd: opts.cwd,
+        env: opts.env,
+      });
+    } finally {
+      state.captureSink = null;
+    }
+    return output.replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, "").trim();
+  }
+
+  async function withOperation(name, fn) {
+    if (!state.ready) throw new Error("Boot Browser Linux ก่อน");
+    if (state.operation) throw new Error(`กำลังทำ ${state.operation} อยู่`);
+    if (state.shellStarted) throw new Error("Shell เปิดอยู่ · Reset Worker ก่อนเริ่มงาน background");
+
+    state.operation = name;
+    document.documentElement.dataset.browserWorkerOperation = name;
+    setButtons();
+    try {
+      return await fn();
+    } finally {
+      state.operation = "";
+      delete document.documentElement.dataset.browserWorkerOperation;
+      setButtons();
+    }
+  }
+
   async function boot() {
     if (state.ready || state.booting) return state;
     const key = saveKey();
     if (!key) throw new Error("กรุณาใส่ BrowserPod API key ก่อน");
 
     state.booting = true;
+    state.reloadPending = false;
     setBadge("warn", "BOOTING");
     setStatus("#workerLinuxDot", "#workerLinuxText", "work", "Booting");
     setTeamWorker("working", "Booting");
@@ -225,22 +308,16 @@
         storageKey: STORAGE_KEY,
       });
 
-      state.terminal = await state.pod.createDefaultTerminal($("#browserLinuxTerminal"));
-      state.captureTerminal = await state.pod.createCustomTerminal({
-        cols: 120,
-        rows: 40,
-        onOutput: () => {},
-      });
-
       state.pod.onPortal(({ url, port }) => handlePortal(url, port));
       state.ready = true;
       setBadge("ok", "LINUX RUNNING");
       setStatus("#workerLinuxDot", "#workerLinuxText", "ok", "Running");
       setTeamWorker("ok", "Running locally");
-      setButtons();
+      writeTerminalNotice("Linux Running · กำลังตรวจ Node / Git / Bash แบบทีละคำสั่ง…");
+      setInfo("Linux Running · Mobile Safe Mode", "ok");
 
-      await preflight();
       window.dispatchEvent(new CustomEvent("webai:browser-worker-status", { detail: getStatus() }));
+      void runPreflight();
       return state;
     } catch (error) {
       state.ready = false;
@@ -252,124 +329,98 @@
     } finally {
       state.booting = false;
       setButtons();
-      sessionStorage.removeItem(autoBootKey);
+      if (!state.reloadPending) sessionStorage.removeItem(AUTOBOOT_KEY);
     }
   }
 
-  function writeTerminalNotice(text) {
-    const target = $("#browserLinuxTerminal");
-    if (!target || state.terminal) return;
-    const line = document.createElement("pre");
-    line.textContent = text;
-    line.style.cssText = "margin:0;color:#8fb7c5;white-space:pre-wrap;font:11px/1.6 ui-monospace,monospace";
-    target.replaceChildren(line);
-  }
-
-  async function runCapture(executable, args = [], opts = {}) {
-    if (!state.pod) throw new Error("Browser Linux ยังไม่ boot");
-    let output = "";
-    const decoder = new TextDecoder();
-    const terminal = await state.pod.createCustomTerminal({
-      cols: 160,
-      rows: 50,
-      onOutput(buffer) {
-        output += decoder.decode(buffer, { stream: true });
-      },
-    });
-    await state.pod.run(executable, args, {
-      terminal,
-      echo: false,
-      cwd: opts.cwd,
-      env: opts.env,
-    });
-    return output.replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, "").trim();
-  }
-
-  async function runVisible(executable, args = [], opts = {}) {
-    if (!state.pod || !state.terminal) throw new Error("Browser Linux ยังไม่ boot");
-    return state.pod.run(executable, args, {
-      terminal: state.terminal,
-      echo: opts.echo !== false,
-      cwd: opts.cwd,
-      env: opts.env,
-    });
-  }
-
-  async function preflight() {
+  async function runPreflight() {
+    if (!state.ready || state.operation || state.preflightReady) return;
+    state.operation = "Runtime check";
+    setButtons();
     try {
-      const [node, git, bash] = await Promise.all([
-        runCapture("node", ["--version"]),
-        runCapture("git", ["--version"]),
-        runCapture("bash", ["--version"]),
-      ]);
-      writeTerminalNotice(`Browser Linux ready\n${node}\n${git}\n${bash.split("\n")[0] || bash}`);
+      const node = await runCapture("node", ["--version"]);
+      const git = await runCapture("git", ["--version"]);
+      const bash = await runCapture("bash", ["--version"]);
+      state.preflightReady = true;
+      const summary = `${String(node).split("\n")[0]} · ${String(git).split("\n")[0]} · ${String(bash).split("\n")[0]}`;
+      setInfo(`Runtime ready · ${summary}`, "ok");
+      writeTerminalNotice(`Linux Running\n${summary}\n\nต่อไปกด Clone / Sync WebAi`);
     } catch (error) {
-      writeTerminalNotice(`Linux booted, preflight warning: ${error.message}`);
+      setInfo(`Linux Running · runtime check warning: ${error.message}`, "warn");
+      writeTerminalNotice(`Linux Running\nRuntime check warning: ${error.message}\n\nยังลอง Clone / Sync ได้`);
+    } finally {
+      state.operation = "";
+      setButtons();
     }
   }
 
   async function prepareWorkspace() {
-    if (!state.ready) throw new Error("Boot Browser Linux ก่อน");
-    setStatus("#workerGitDot", "#workerGitText", "work", "Syncing");
-    await state.pod.createDirectory("/workspace", { recursive: true });
+    return withOperation("Clone / Sync", async () => {
+      setStatus("#workerGitDot", "#workerGitText", "work", "Syncing");
+      setInfo("กำลัง Clone / Sync WebAi · งานอื่นถูกล็อกชั่วคราว", "working");
+      await state.pod.createDirectory("/workspace", { recursive: true });
 
-    const script = `set -e\nif [ -d ${WORKSPACE}/.git ]; then\n  cd ${WORKSPACE}\n  git fetch --depth 1 origin main\n  git reset --hard origin/main\nelse\n  rm -rf ${WORKSPACE}\n  git clone --depth 1 ${REPO_URL} ${WORKSPACE}\nfi\nprintf '\\nWorkspace ready: ${WORKSPACE}\\n'\ngit -C ${WORKSPACE} rev-parse --short HEAD\n`;
-    await runVisible("bash", ["-lc", script]);
-    state.workspaceReady = true;
-    setStatus("#workerGitDot", "#workerGitText", "ok", "WebAi mounted");
-    setButtons();
-    await refreshGitEvidence();
-    window.dispatchEvent(new CustomEvent("webai:browser-worker-status", { detail: getStatus() }));
+      const script = `set -e\nif [ -d ${WORKSPACE}/.git ]; then\n  cd ${WORKSPACE}\n  git fetch --depth 1 origin main\n  git reset --hard origin/main\nelse\n  rm -rf ${WORKSPACE}\n  git clone --depth 1 ${REPO_URL} ${WORKSPACE}\nfi\ngit -C ${WORKSPACE} rev-parse --short HEAD\n`;
+      const output = await runCapture("bash", ["-lc", script]);
+      state.workspaceReady = true;
+      setStatus("#workerGitDot", "#workerGitText", "ok", "WebAi mounted");
+      setInfo(`Workspace mounted · ${output.split("\n").slice(-1)[0] || WORKSPACE}`, "ok");
+      await refreshGitEvidence();
+      window.dispatchEvent(new CustomEvent("webai:browser-worker-status", { detail: getStatus() }));
+      return output;
+    }).catch((error) => {
+      setStatus("#workerGitDot", "#workerGitText", "bad", "Sync failed");
+      setInfo(`Clone / Sync failed · ${error.message}`, "warn");
+      throw error;
+    });
   }
 
   async function refreshGitEvidence() {
     if (!state.workspaceReady) return;
-    let status = "";
-    let numstat = "";
     try {
-      status = await runCapture("git", ["status", "--short"], { cwd: WORKSPACE });
-      numstat = await runCapture("git", ["diff", "--numstat"], { cwd: WORKSPACE });
-    } catch {
-      return;
-    }
-    const files = status ? status.split("\n").filter(Boolean).length : 0;
-    let additions = 0;
-    let deletions = 0;
-    if (numstat) {
-      for (const line of numstat.split("\n")) {
+      const status = await runCapture("git", ["status", "--short"], { cwd: WORKSPACE });
+      const numstat = await runCapture("git", ["diff", "--numstat"], { cwd: WORKSPACE });
+      const files = status ? status.split("\n").filter(Boolean).length : 0;
+      let additions = 0;
+      let deletions = 0;
+      for (const line of (numstat || "").split("\n")) {
         const [a, d] = line.split("\t");
         if (/^\d+$/.test(a)) additions += Number(a);
         if (/^\d+$/.test(d)) deletions += Number(d);
       }
-    }
-    const headline = $("#diffHeadline");
-    const stats = $("#diffStats");
-    if (headline) headline.textContent = `${files} files changed`;
-    if (stats) stats.textContent = `+${additions} −${deletions}`;
+      const headline = $("#diffHeadline");
+      const stats = $("#diffStats");
+      if (headline) headline.textContent = `${files} files changed`;
+      if (stats) stats.textContent = `+${additions} −${deletions}`;
+    } catch {}
   }
 
   async function probeOmp() {
-    if (!state.ready) throw new Error("Boot Browser Linux ก่อน");
-    setStatus("#workerOmpDot", "#workerOmpText", "work", "Checking");
-    state.ompReady = false;
-    state.ompVersion = "";
+    return withOperation("Check OMP", async () => {
+      setStatus("#workerOmpDot", "#workerOmpText", "work", "Checking");
+      setInfo("กำลังตรวจ OMP แบบ command เดียว", "working");
+      state.ompReady = false;
+      state.ompVersion = "";
 
-    try {
-      const output = await runCapture("bash", ["-lc", "command -v omp >/dev/null 2>&1 && omp --version"]);
-      if (output && !/not found|error/i.test(output)) {
-        state.ompReady = true;
-        state.ompVersion = output.split("\n").filter(Boolean).slice(-1)[0] || "available";
-        setStatus("#workerOmpDot", "#workerOmpText", "ok", state.ompVersion);
-      } else {
-        throw new Error("omp executable not available");
+      try {
+        const output = await runCapture("bash", ["-lc", "command -v omp >/dev/null 2>&1 && omp --version"]);
+        if (output && !/not found|error/i.test(output)) {
+          state.ompReady = true;
+          state.ompVersion = output.split("\n").filter(Boolean).slice(-1)[0] || "available";
+          setStatus("#workerOmpDot", "#workerOmpText", "ok", state.ompVersion);
+          setInfo(`OMP detected · ${state.ompVersion}`, "ok");
+        } else {
+          throw new Error("omp executable not available");
+        }
+      } catch {
+        setStatus("#workerOmpDot", "#workerOmpText", "warn", "Needs browser/Wasm build");
+        setInfo("OMP ยังไม่มี browser/Wasm-compatible build · Linux/Workspace ยังใช้งานต่อได้", "warn");
       }
-    } catch {
-      setStatus("#workerOmpDot", "#workerOmpText", "warn", "Needs browser/Wasm build");
-    }
 
-    paintGlobalOmpState();
-    window.dispatchEvent(new CustomEvent("webai:browser-worker-status", { detail: getStatus() }));
-    return state.ompReady;
+      paintGlobalOmpState();
+      window.dispatchEvent(new CustomEvent("webai:browser-worker-status", { detail: getStatus() }));
+      return state.ompReady;
+    });
   }
 
   function paintGlobalOmpState() {
@@ -386,16 +437,30 @@
   }
 
   async function startShell() {
-    if (!state.ready || state.shellStarted) return;
+    if (!state.workspaceReady) throw new Error("Clone / Sync WebAi ก่อน");
+    if (state.operation) throw new Error(`กำลังทำ ${state.operation} อยู่`);
+    if (state.shellStarted) return;
+
     state.shellStarted = true;
     setButtons();
-    const cwd = state.workspaceReady ? WORKSPACE : "/";
-    runVisible("bash", [], { cwd, echo: true })
-      .catch((error) => writeTerminalNotice(`Shell ended: ${error.message}`))
-      .finally(() => {
-        state.shellStarted = false;
-        setButtons();
-      });
+    setInfo("Interactive shell เปิดแล้ว · background operations ถูกล็อกจน Reset Worker", "ok");
+
+    const target = $("#browserLinuxTerminal");
+    if (!state.shellTerminal) {
+      target?.replaceChildren();
+      state.shellTerminal = await state.pod.createDefaultTerminal(target);
+    }
+
+    state.pod.run("bash", [], {
+      terminal: state.shellTerminal,
+      echo: true,
+      cwd: WORKSPACE,
+    }).catch((error) => {
+      setInfo(`Shell ended · ${error.message}`, "warn");
+    }).finally(() => {
+      state.shellStarted = false;
+      setButtons();
+    });
   }
 
   async function writePreviewServer() {
@@ -406,17 +471,28 @@
   }
 
   async function startPreview() {
-    if (!state.workspaceReady) throw new Error("เตรียม Workspace ก่อน");
-    await writePreviewServer();
-    const status = $("#previewStatus");
-    if (status) status.textContent = "Starting Browser Linux preview…";
-    if (!state.previewPromise) {
-      state.previewPromise = runVisible("node", [".webai-preview.mjs"], { cwd: WORKSPACE, echo: true })
-        .catch((error) => {
+    return withOperation("Start Preview", async () => {
+      if (!state.workspaceReady) throw new Error("Clone / Sync WebAi ก่อน");
+      await writePreviewServer();
+      const previewStatus = $("#previewStatus");
+      if (previewStatus) previewStatus.textContent = "Starting Browser Linux preview…";
+
+      if (!state.previewTerminal) {
+        state.previewTerminal = await state.pod.createCustomTerminal({ cols: 80, rows: 16, onOutput: () => {} });
+      }
+
+      if (!state.previewPromise) {
+        state.previewPromise = state.pod.run("node", [".webai-preview.mjs"], {
+          terminal: state.previewTerminal,
+          echo: false,
+          cwd: WORKSPACE,
+        }).catch((error) => {
           state.previewPromise = null;
-          if (status) status.textContent = `Preview failed: ${error.message}`;
+          if (previewStatus) previewStatus.textContent = `Preview failed: ${error.message}`;
         });
-    }
+      }
+      setInfo("Preview process started · รอ portal URL", "ok");
+    });
   }
 
   function handlePortal(url, port) {
@@ -427,6 +503,7 @@
       info.classList.add("show");
       info.innerHTML = `Preview Portal · port ${Number(port)} · <a href="${url}" target="_blank" rel="noreferrer">Open preview</a>`;
     }
+
     if (Number(port) === PREVIEW_PORT) {
       const status = $("#previewStatus");
       const canvas = $("#tab-preview .previewCanvas");
@@ -444,25 +521,22 @@
   }
 
   async function runOmp(prompt) {
-    if (!state.ompReady) {
-      throw new Error("OMP ยังไม่มี browser/Wasm-compatible build ใน Worker นี้");
-    }
+    if (!state.ompReady) throw new Error("OMP ยังไม่มี browser/Wasm-compatible build ใน Worker นี้");
     if (!state.workspaceReady) throw new Error("Workspace ยังไม่พร้อม");
-    // Execution hook is deliberately gated on a real runnable omp binary.
-    return runVisible("omp", ["--version"], { cwd: WORKSPACE, echo: true }).then(() => ({
-      ok: false,
-      blocked: true,
-      content: "OMP binary was detected, but RPC streaming adapter has not been certified yet.",
-      promptLength: String(prompt || "").length,
-    }));
+    const version = await runCapture("omp", ["--version"], { cwd: WORKSPACE });
+    return { ok: false, blocked: true, content: `OMP detected (${version}) แต่ RPC streaming adapter ยังไม่ certified`, promptLength: String(prompt || "").length };
   }
 
   function getStatus() {
     return {
       target: "browser",
+      mobileSafeMode: true,
       isolated: window.crossOriginIsolated,
       linuxReady: state.ready,
+      preflightReady: state.preflightReady,
       workspaceReady: state.workspaceReady,
+      operation: state.operation,
+      shellStarted: state.shellStarted,
       ompReady: state.ompReady,
       ompVersion: state.ompVersion,
       previewUrl: state.portalUrl,
@@ -470,28 +544,34 @@
     };
   }
 
+  function resetWorker() {
+    sessionStorage.removeItem(AUTOBOOT_KEY);
+    location.reload();
+  }
+
   function bindPanel() {
     $("#bootBrowserLinux")?.addEventListener("click", () => boot().catch((error) => alert(error.message)));
     $("#prepareBrowserWorkspace")?.addEventListener("click", () => prepareWorkspace().catch((error) => alert(error.message)));
     $("#probeBrowserOmp")?.addEventListener("click", () => probeOmp().catch((error) => alert(error.message)));
-    $("#startBrowserShell")?.addEventListener("click", () => startShell().catch((error) => alert(error.message)));
     $("#startBrowserPreview")?.addEventListener("click", () => startPreview().catch((error) => alert(error.message)));
+    $("#startBrowserShell")?.addEventListener("click", () => startShell().catch((error) => alert(error.message)));
+    $("#resetBrowserWorker")?.addEventListener("click", resetWorker);
     $("#forgetBrowserPodKey")?.addEventListener("click", forgetKey);
     $("#browserPodKey")?.addEventListener("change", saveKey);
     $("#rememberBrowserPodKey")?.addEventListener("change", saveKey);
   }
 
   async function maybeAutoBoot() {
-    if (sessionStorage.getItem(autoBootKey) !== "1") return;
+    if (sessionStorage.getItem(AUTOBOOT_KEY) !== "1") return;
     restoreKey();
     if (!$("#browserPodKey")?.value.trim()) {
-      sessionStorage.removeItem(autoBootKey);
+      sessionStorage.removeItem(AUTOBOOT_KEY);
       return;
     }
     try {
       await boot();
     } catch {
-      sessionStorage.removeItem(autoBootKey);
+      sessionStorage.removeItem(AUTOBOOT_KEY);
     }
   }
 
@@ -505,10 +585,11 @@
     prepareWorkspace,
     refreshGitEvidence,
     probeOmp,
-    startShell,
     startPreview,
+    startShell,
     runCapture,
     runOmp,
+    resetWorker,
     getStatus,
     isOmpReady: () => state.ompReady,
   };
