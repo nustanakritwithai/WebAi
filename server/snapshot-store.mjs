@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { createDiffEvidence } from "./diff-evidence.mjs";
 
 const MAX_TARGETS = 32;
 const MAX_PATH_CHARS = 240;
@@ -104,6 +105,11 @@ function publicManifest(manifest) {
       afterMode: file.afterMode ?? null,
       bytesBefore: file.bytesBefore,
       bytesAfter: file.bytesAfter ?? null,
+      changed: file.changed === true,
+      additions: Number.isInteger(file.additions) ? file.additions : null,
+      deletions: Number.isInteger(file.deletions) ? file.deletions : null,
+      diffExact: file.diffExact === true,
+      diffKind: typeof file.diffKind === "string" ? file.diffKind : null,
     })),
     rollback: manifest.rollback || null,
   };
@@ -219,6 +225,11 @@ export function createSnapshotStore({ workspace, snapshotRoot }) {
         afterSha256: null,
         afterMode: null,
         bytesAfter: null,
+        changed: false,
+        additions: null,
+        deletions: null,
+        diffExact: false,
+        diffKind: null,
       });
     }
 
@@ -232,11 +243,27 @@ export function createSnapshotStore({ workspace, snapshotRoot }) {
     if (manifest.status !== "captured") throw httpError("snapshot_not_captured", 409);
 
     for (const file of manifest.files) {
-      const state = await fileState(workspaceRoot, file.path);
+      const state = await fileState(workspaceRoot, file.path, { includeContent: true });
+      let beforeContent = Buffer.alloc(0);
+      if (file.existed) {
+        if (!file.blob) throw httpError("snapshot_blob_missing", 500);
+        beforeContent = await readFile(resolve(paths.filesDir, file.blob));
+      }
+      const diff = createDiffEvidence({
+        beforeContent,
+        afterContent: state.content,
+        beforeExists: file.existed === true,
+        afterExists: state.exists === true,
+      });
       file.afterExists = state.exists;
       file.afterSha256 = state.sha256;
       file.afterMode = state.mode;
       file.bytesAfter = state.bytes;
+      file.changed = diff.changed;
+      file.additions = diff.additions;
+      file.deletions = diff.deletions;
+      file.diffExact = diff.diffExact;
+      file.diffKind = diff.diffKind;
     }
     manifest.status = "applied";
     manifest.appliedAt = new Date().toISOString();
