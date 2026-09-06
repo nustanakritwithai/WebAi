@@ -28,6 +28,10 @@
   function clearSession() {
     localStorage.removeItem(CORE_SESSION_KEY);
     localStorage.removeItem(CORE_SESSION_EXP_KEY);
+    try {
+      if (typeof state !== "undefined") state.agentAvailable = false;
+      if (typeof applyActionState === "function") applyActionState();
+    } catch {}
   }
 
   function ensureTeam(name, id) {
@@ -110,7 +114,7 @@
     paintRow("Session Auth", "teamSessionAuth", authReady ? "ok" : "bad", authReady ? "Signed sessions" : "Not configured");
 
     try {
-      if (typeof state !== "undefined") state.agentAvailable = coreReady && authReady;
+      if (typeof state !== "undefined") state.agentAvailable = coreReady && authReady && sessionValid();
       if (typeof applyActionState === "function") applyActionState();
     } catch {}
 
@@ -125,6 +129,10 @@
       const text = $("#coreState");
       if (dot) dot.className = "tinyDot idle";
       if (text) text.textContent = "รอ URL";
+      try {
+        if (typeof state !== "undefined") state.agentAvailable = false;
+        if (typeof applyActionState === "function") applyActionState();
+      } catch {}
       return null;
     }
     try {
@@ -138,6 +146,10 @@
       const text = $("#coreState");
       if (dot) dot.className = "tinyDot bad";
       if (text) text.textContent = "Offline";
+      try {
+        if (typeof state !== "undefined") state.agentAvailable = false;
+        if (typeof applyActionState === "function") applyActionState();
+      } catch {}
       throw error;
     }
   }
@@ -167,6 +179,7 @@
     const status = $("#coreConnectionStatus");
     const base = input?.value.trim().replace(/\/+$/, "") || "";
     if (!base) return;
+    if (base !== coreBase()) clearSession();
     localStorage.setItem(CORE_BASE_KEY, base);
     if (status) status.querySelector("b").textContent = "กำลังตรวจ Core…";
 
@@ -249,6 +262,7 @@
     connect: connectCore,
     exchangeSession,
     clearSession,
+    isTaskReady: () => Boolean(coreBase()) && sessionValid(),
     request: coreTaskRequest,
   };
 })();
