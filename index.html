@@ -9,28 +9,137 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo">W</span><div><strong>WebAi</strong><small>AI Software Engineering CPU · V0.1</small></div></div>
-  <nav><a href="./roadmap.html">Roadmap</a><a href="./IMPLEMENTATION_PLAN.md">Plan</a><a href="https://opentyphoon.ai/" target="_blank" rel="noreferrer">OpenTyphoon</a></nav>
-  <span id="health" class="pill warn">กำลังตรวจ Backend</span>
+  <a class="brand" href="./"><span class="logo">W</span><div><strong>WebAi</strong><small>AI Software Engineering CPU · V0.1</small></div></a>
+  <nav><a href="#console">Console</a><a href="./roadmap.html">Roadmap</a><a href="./IMPLEMENTATION_PLAN.md">Plan</a><a href="https://opentyphoon.ai/" target="_blank" rel="noreferrer">OpenTyphoon</a></nav>
+  <span id="health" class="pill warn"><span class="statusDot"></span>รอ Backend URL</span>
 </header>
+
 <div class="shell">
   <aside class="sidebar">
-    <section><div class="sectionTitle">PROJECT</div><div class="project active"><span>◈</span><div><b>WebAi</b><small>nustanakritwithai/WebAi</small></div></div></section>
-    <section><div class="sectionTitle">AI STACK</div>
-      <div class="agent"><span class="dot on"></span><b>OpenTyphoon</b><em>THINK</em></div><div class="agent"><span class="dot on"></span><b>AI CPU</b><em>CONTROL</em></div><div class="agent"><span class="dot"></span><b>ECC</b><em>KNOW HOW</em></div><div class="agent"><span class="dot"></span><b>OMP</b><em>DO</em></div><div class="agent"><span class="dot"></span><b>Hermes</b><em>MEMORY</em></div><div class="agent"><span class="dot"></span><b>OpenClaw</b><em>COMMS</em></div><div class="agent"><span class="dot"></span><b>Harpoon</b><em>MEASURE</em></div>
+    <section class="projectSection">
+      <div class="sectionTitle">PROJECT</div>
+      <div class="project active"><span class="projectIcon">◈</span><div><b>WebAi</b><small>nustanakritwithai/WebAi</small></div><span class="version">V0.1</span></div>
     </section>
-    <section class="config"><div class="sectionTitle">BACKEND</div><label>API Base URL<input id="apiBase" placeholder="https://api.example.com"></label><label>Session token<input id="sessionToken" type="password" placeholder="optional"></label><button id="saveConfig" class="secondary">บันทึกการเชื่อมต่อ</button><p class="hint">API key ของ Typhoon ต้องอยู่บน server เท่านั้น ไม่ใส่ในหน้านี้</p></section>
+
+    <section class="stackSection">
+      <div class="sectionTitle">AI STACK</div>
+      <div class="agent"><span id="typhoonDot" class="dot"></span><b>OpenTyphoon</b><em>THINK</em></div>
+      <div class="agent"><span class="dot on"></span><b>AI CPU</b><em>CONTROL</em></div>
+      <div class="agent"><span class="dot"></span><b>ECC</b><em>KNOW HOW</em></div>
+      <div class="agent"><span id="ompDot" class="dot"></span><b>OMP</b><em>DO</em></div>
+      <div class="agent"><span class="dot"></span><b>Hermes</b><em>MEMORY</em></div>
+      <div class="agent"><span class="dot"></span><b>OpenClaw</b><em>COMMS</em></div>
+      <div class="agent"><span class="dot"></span><b>Harpoon</b><em>MEASURE</em></div>
+    </section>
+
+    <section class="config" id="connect">
+      <div class="sectionTitle">CONNECT BACKEND</div>
+      <div class="connectCard">
+        <div class="connectIntro"><span class="connectIcon">↗</span><div><b>เชื่อมต่อ VPS</b><small id="connectionSummary">ใส่ URL ของ Secret Proxy / Backend</small></div></div>
+        <div class="miniSteps">
+          <span id="stepUrl" class="miniStep active"><i>1</i> URL</span>
+          <span id="stepHealth" class="miniStep"><i>2</i> Health</span>
+          <span id="stepReady" class="miniStep"><i>3</i> Ready</span>
+        </div>
+        <label>API Base URL<input id="apiBase" inputmode="url" autocomplete="url" placeholder="https://api.example.com"></label>
+        <label>Session token <small>ไม่บังคับ</small><input id="sessionToken" type="password" autocomplete="off" placeholder="optional"></label>
+        <button id="saveConfig" class="primary connectBtn">เชื่อมต่อ Backend</button>
+        <p class="hint">API key ของ OpenTyphoon ต้องอยู่บน VPS เท่านั้น และจะไม่ถูกส่งมาที่ Browser</p>
+      </div>
+    </section>
   </aside>
+
   <main class="workspace">
-    <section class="heroPanel"><div><span class="eyebrow">PRIMARY MODEL</span><h1>OpenTyphoon + OMP<br><span>สร้างเว็บด้วย AI แบบตรวจสอบได้</span></h1><p>Typhoon คิดและวางแผน · OMP ลงมือ · ECC คุมวิธีทำงาน · Hermes จำ · OpenClaw สื่อสาร · Harpoon วัดผล</p></div><div class="modelCard"><small>MODEL</small><strong id="modelName">—</strong><span>OpenAI-compatible API</span></div></section>
-    <section class="grid">
-      <div class="panel chatPanel"><div class="panelHead"><div><b>AI Task Console</b><small>Ctrl/⌘ + Enter เพื่อส่ง</small></div><span id="taskStatus" class="pill ok">พร้อม</span></div><div id="messages" class="messages"><div class="bubble assistant"><b>WebAi</b><div>พร้อมรับงาน เมื่อ Backend เชื่อมกับ OpenTyphoon แล้ว คุณสามารถคุย, ขอแผน หรือส่งงานให้ OMP จากหน้านี้ได้</div></div></div><div class="composer"><textarea id="taskInput" rows="4" placeholder="เช่น: เพิ่มหน้า Login พร้อม validation และ test"></textarea><div class="actions"><button id="planBtn" class="secondary">วางแผน</button><button id="ompBtn" class="secondary">OMP ยังปิด</button><button id="sendBtn" class="primary">ส่งให้ Typhoon</button></div></div></div>
-      <div class="sidecol"><div class="panel"><div class="panelHead"><div><b>Task Plan</b><small>Structured output จาก Typhoon</small></div></div><pre id="planBox" class="planBox">ยังไม่มีแผน</pre></div><div class="panel"><div class="panelHead"><div><b>Verification Gate</b><small>LLM บอกว่าเสร็จ ≠ DONE</small></div></div><div class="checks"><span>○ Build</span><span>○ Unit Test</span><span>○ Integration</span><span>○ Browser</span><span>○ ECC Review</span><span>○ Security</span><span>○ Harpoon</span><span>○ Regression</span></div></div></div>
+    <section class="statusGrid" aria-label="System status">
+      <div class="statusCard"><span class="statusIcon">◉</span><div><small>BACKEND</small><b id="backendState">รอ URL</b></div><span id="backendBadge" class="miniBadge wait">WAIT</span></div>
+      <div class="statusCard"><span class="statusIcon">✦</span><div><small>OPENTYPHOON</small><b id="typhoonState">ยังไม่ตรวจ</b></div><span id="typhoonBadge" class="miniBadge wait">WAIT</span></div>
+      <div class="statusCard"><span class="statusIcon">⌘</span><div><small>OMP</small><b id="ompState">ยังไม่ตรวจ</b></div><span id="ompBadge" class="miniBadge wait">WAIT</span></div>
+      <div class="statusCard"><span class="statusIcon">✓</span><div><small>VERIFICATION</small><b id="gateState">รอ Task</b></div><span class="miniBadge neutral">0/8</span></div>
     </section>
-    <section class="panel eventPanel"><div class="panelHead"><div><b>Runtime Events</b><small>เฉพาะ metadata — ไม่ log secret</small></div></div><div id="eventLog" class="eventLog"></div></section>
-    <section class="flow"><div><b>1. THINK</b><span>OpenTyphoon</span></div><i>→</i><div><b>2. KNOW HOW</b><span>ECC</span></div><i>→</i><div><b>3. DO</b><span>OMP</span></div><i>→</i><div><b>4. VERIFY</b><span>Tests + Harpoon</span></div><i>→</i><div><b>5. REMEMBER</b><span>Hermes</span></div></section>
+
+    <section id="setupGuide" class="setupGuide">
+      <div class="setupBadge">QUICK START</div>
+      <div class="setupCopy"><h2>เริ่มใช้งานใน 3 ขั้นตอน</h2><p>เชื่อม VPS ก่อน แล้วจึงสั่งให้ Typhoon คิด วางแผน และส่งงานต่อให้ OMP</p></div>
+      <div class="setupSteps">
+        <div><span>1</span><b>ใส่ Backend URL</b><small>URL ของ VPS ที่เก็บ API key</small></div>
+        <i>→</i>
+        <div><span>2</span><b>เชื่อมต่อ</b><small>WebAi ตรวจ /api/health</small></div>
+        <i>→</i>
+        <div><span>3</span><b>เริ่มสั่งงาน</b><small>Ask · Plan · OMP</small></div>
+      </div>
+      <button id="goConnect" class="secondary">ไปที่การเชื่อมต่อ</button>
+    </section>
+
+    <section class="heroPanel">
+      <div>
+        <span class="eyebrow">AI CONTROL CENTER</span>
+        <h1>สั่งงาน AI จากเว็บเดียว<br><span>คิด → ทำ → ตรวจ → จำ</span></h1>
+        <p>OpenTyphoon เป็นสมองหลัก · ECC เตรียม Know-how · OMP ลงมือ · Tests + Harpoon ตรวจผล · Hermes เก็บความจำ</p>
+      </div>
+      <div class="modelCard"><small>PRIMARY MODEL</small><strong id="modelName">รอเชื่อมต่อ</strong><span>OpenAI-compatible API</span></div>
+    </section>
+
+    <section class="grid" id="console">
+      <div class="panel chatPanel">
+        <div class="panelHead">
+          <div><span class="panelKicker">WORKSPACE</span><b>คอนโซลงาน AI</b><small>พิมพ์สิ่งที่ต้องการ แล้วเลือกว่าจะถาม วางแผน หรือให้ OMP ลงมือ</small></div>
+          <span id="taskStatus" class="pill warn">รอ Backend</span>
+        </div>
+
+        <div id="messages" class="messages">
+          <div class="bubble assistant"><b>WebAi</b><div>พร้อมช่วยทำงานครับ ขั้นแรกเชื่อม Backend ทางซ้ายก่อน เมื่อสถานะ Typhoon เป็น “พร้อม” ปุ่มสั่งงานจะเปิดอัตโนมัติ</div></div>
+        </div>
+
+        <div class="quickPrompts" aria-label="ตัวอย่างคำสั่ง">
+          <button class="promptChip" data-prompt="วิเคราะห์โครงสร้างโปรเจกต์นี้และเสนอสิ่งที่ควรทำต่อ">วิเคราะห์โปรเจกต์</button>
+          <button class="promptChip" data-prompt="เพิ่มหน้า Login พร้อม validation และ automated test">สร้างหน้า Login</button>
+          <button class="promptChip" data-prompt="ตรวจหาบั๊กที่อาจทำให้ build หรือ runtime ล้ม และเสนอวิธีแก้">ตรวจบั๊ก</button>
+        </div>
+
+        <div class="composer">
+          <textarea id="taskInput" rows="5" placeholder="เช่น: เพิ่มหน้า Login พร้อม validation และ test"></textarea>
+          <div class="composerMeta"><span>Ctrl/⌘ + Enter เพื่อถาม Typhoon</span><span id="connectionHint">ยังไม่ได้เชื่อม Backend</span></div>
+          <div class="actions">
+            <button id="planBtn" class="secondary" disabled><span>≡</span> สร้างแผน</button>
+            <button id="ompBtn" class="secondary" disabled><span>⌘</span> ส่งให้ OMP</button>
+            <button id="sendBtn" class="primary" disabled><span>➤</span> ถาม Typhoon</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidecol">
+        <div class="panel planPanel">
+          <div class="panelHead"><div><span class="panelKicker">STRUCTURED OUTPUT</span><b>แผนงาน</b><small>สร้างจาก OpenTyphoon</small></div></div>
+          <pre id="planBox" class="planBox">ยังไม่มีแผน
+
+พิมพ์เป้าหมายใน Console แล้วกด “สร้างแผน”</pre>
+        </div>
+
+        <div class="panel verifyPanel">
+          <div class="panelHead"><div><span class="panelKicker">QUALITY GATE</span><b>ด่านตรวจสอบ</b><small>AI บอกว่าเสร็จ ≠ DONE</small></div></div>
+          <div class="checks">
+            <span><i>○</i> Build</span><span><i>○</i> Unit Test</span><span><i>○</i> Integration</span><span><i>○</i> Browser</span><span><i>○</i> ECC Review</span><span><i>○</i> Security</span><span><i>○</i> Harpoon</span><span><i>○</i> Regression</span>
+          </div>
+          <div class="gateFooter"><span>Verification จะเริ่มเมื่อมี Task run จริง</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel eventPanel">
+      <div class="panelHead"><div><span class="panelKicker">OBSERVABILITY</span><b>เหตุการณ์ระหว่างทำงาน</b><small>แสดงเฉพาะ metadata — ไม่ log secret</small></div><button id="clearLog" class="ghostBtn">ล้าง</button></div>
+      <div id="eventLog" class="eventLog"><div class="emptyLog">ยังไม่มี event · ระบบจะเริ่มบันทึกหลังเชื่อม Backend</div></div>
+    </section>
+
+    <section class="flow" aria-label="Agent workflow">
+      <div><b>1. THINK</b><span>OpenTyphoon</span></div><i>→</i><div><b>2. KNOW HOW</b><span>ECC</span></div><i>→</i><div><b>3. DO</b><span>OMP</span></div><i>→</i><div><b>4. VERIFY</b><span>Tests + Harpoon</span></div><i>→</i><div><b>5. REMEMBER</b><span>Hermes</span></div>
+    </section>
   </main>
 </div>
+
+<nav class="mobileNav" aria-label="Mobile navigation">
+  <a href="#console">Console</a><a href="#connect">Connect</a><a href="./roadmap.html">Roadmap</a>
+</nav>
+
 <script src="./app.js" defer></script>
 </body>
 </html>
