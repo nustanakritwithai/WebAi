@@ -230,7 +230,13 @@
         clearSession();
         throw new Error("Core session หมดอายุ · Pairing ใหม่อีกครั้ง");
       }
-      if (!response.ok) throw Object.assign(new Error(data.error || `HTTP ${response.status}`), { status: response.status, code: data.error });
+      if (!response.ok) {
+        throw Object.assign(new Error(data.error || `HTTP ${response.status}`), {
+          status: response.status,
+          code: data.error,
+          ...(Array.isArray(data.files) ? { files: data.files.slice(0, 16).map((path) => String(path).slice(0, 240)) } : {}),
+        });
+      }
       return data.task || data;
     } catch (error) {
       if (error?.name === "AbortError") throw new Error("WebAi Core ใช้เวลานานเกินกำหนด");

@@ -244,6 +244,64 @@ export function createSnapshotStore({ workspace, snapshotRoot }) {
     return publicManifest(manifest);
   }
 
+  async function restoreBefore(manifest, paths, workspaceRoot, reason = "rollback") {
+    const restored = [];
+    const tag = `${reason}-${randomUUID()}`;
+    for (const file of manifest.files) {
+      const target = targetPath(workspaceRoot, file.path);
+      await assertNoSymlinks(workspaceRoot, file.path);
+      if (file.existed) {
+        if (!file.blob) throw httpError("snapshot_blob_missing", 500);
+        const content = await readFile(resolve(paths.filesDir, file.blob));
+        await atomicWrite(target, content, tag);
+        if (Number.isInteger(file.beforeMode)) {
+          try { await chmod(target, file.beforeMode); } catch {}
+        }
+      } else {
+        await rm(target, { force: true });
+      }
+      restored.push(file.path);
+    }
+
+    const verificationFailures = [];
+    for (const file of manifest.files) {
+      const state = await fileState(workspaceRoot, file.path);
+      const expectedExists = file.existed === true;
+      const hashMatches = state.sha256 === (file.beforeSha256 ?? null);
+      const modeMatches = !expectedExists || state.mode === (file.beforeMode ?? null);
+      if (state.exists !== expectedExists || !hashMatches || !modeMatches) verificationFailures.push(file.path);
+    }
+    if (verificationFailures.length) throw httpError("rollback_verification_failed", 500, { files: verificationFailures });
+    return restored;
+  }
+
+  async function restoreCaptured(ref) {
+    const { workspaceRoot } = await roots();
+    const { manifest, paths } = await load(ref);
+    if (manifest.status !== "captured") throw httpError("snapshot_not_captured", 409);
+    const restored = await restoreBefore(manifest, paths, workspaceRoot, "emergency-restore");
+    manifest.status = "rolled_back";
+    manifest.rolledBackAt = new Date().toISOString();
+    manifest.rollback = { status: "passed", restoredFiles: restored.length, verified: true, reason: "emergency_restore" };
+    await persist(manifest, paths);
+    return publicManifest(manifest);
+  }
+
+  async function validateApplied(ref) {
+    const { workspaceRoot } = await roots();
+    const { manifest } = await load(ref);
+    if (manifest.status !== "applied") throw httpError("snapshot_not_applied", 409);
+    const conflicts = [];
+    for (const file of manifest.files) {
+      const state = await fileState(workspaceRoot, file.path);
+      const expectedExists = file.afterExists === true;
+      const hashMatches = state.sha256 === (file.afterSha256 ?? null);
+      const modeMatches = state.mode === (file.afterMode ?? null);
+      if (state.exists !== expectedExists || !hashMatches || !modeMatches) conflicts.push(file.path);
+    }
+    return { ok: conflicts.length === 0, conflicts, snapshot: publicManifest(manifest) };
+  }
+
   async function rollback(ref) {
     const { workspaceRoot } = await roots();
     const { manifest, paths } = await load(ref);
@@ -261,34 +319,9 @@ export function createSnapshotStore({ workspace, snapshotRoot }) {
     }
     if (conflicts.length) throw httpError("rollback_conflict", 409, { files: conflicts });
 
-    const restored = [];
-    const tag = `rollback-${randomUUID()}`;
+    let restored;
     try {
-      for (const file of manifest.files) {
-        const target = targetPath(workspaceRoot, file.path);
-        await assertNoSymlinks(workspaceRoot, file.path);
-        if (file.existed) {
-          if (!file.blob) throw httpError("snapshot_blob_missing", 500);
-          const content = await readFile(resolve(paths.filesDir, file.blob));
-          await atomicWrite(target, content, tag);
-          if (Number.isInteger(file.beforeMode)) {
-            try { await chmod(target, file.beforeMode); } catch {}
-          }
-        } else {
-          await rm(target, { force: true });
-        }
-        restored.push(file.path);
-      }
-
-      const verificationFailures = [];
-      for (const file of manifest.files) {
-        const state = await fileState(workspaceRoot, file.path);
-        const expectedExists = file.existed === true;
-        const hashMatches = state.sha256 === (file.beforeSha256 ?? null);
-        const modeMatches = !expectedExists || state.mode === (file.beforeMode ?? null);
-        if (state.exists !== expectedExists || !hashMatches || !modeMatches) verificationFailures.push(file.path);
-      }
-      if (verificationFailures.length) throw httpError("rollback_verification_failed", 500, { files: verificationFailures });
+      restored = await restoreBefore(manifest, paths, workspaceRoot, "rollback");
     } catch (error) {
       // Best-effort transaction repair: restore the exact post-execution state captured before rollback.
       for (const file of manifest.files) {
@@ -296,7 +329,7 @@ export function createSnapshotStore({ workspace, snapshotRoot }) {
         const target = targetPath(workspaceRoot, file.path);
         try {
           if (state?.exists) {
-            await atomicWrite(target, state.content, `${tag}-undo`);
+            await atomicWrite(target, state.content, `rollback-undo-${randomUUID()}`);
             if (Number.isInteger(state.mode)) await chmod(target, state.mode);
           } else {
             await rm(target, { force: true });
@@ -318,5 +351,5 @@ export function createSnapshotStore({ workspace, snapshotRoot }) {
     return publicManifest(manifest);
   }
 
-  return { createSnapshot, recordAfter, rollback, getSnapshot };
+  return { createSnapshot, recordAfter, restoreCaptured, validateApplied, rollback, getSnapshot };
 }

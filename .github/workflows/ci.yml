@@ -20,6 +20,7 @@ jobs:
         run: |
           node --check server/index.mjs
           node --check server/core.mjs
+          node --check server/core-recovery.mjs
           node --check server/agent.mjs
           node --check server/native-worker.mjs
           node --check server/snapshot-store.mjs
@@ -33,6 +34,7 @@ jobs:
           node --check scripts/agent-smoke.mjs
           node --check scripts/native-worker-smoke.mjs
           node --check scripts/snapshot-smoke.mjs
+          node --check scripts/recovery-smoke.mjs
       - name: Secret proxy contract
         run: |
           grep -q 'webai-typhoon-proxy' server/index.mjs
@@ -58,12 +60,37 @@ jobs:
           grep -q 'webai-native-v0.1' server/native-worker.mjs
           grep -q 'native_path_denied' server/native-worker.mjs
           grep -q 'native_symlink_denied' server/native-worker.mjs
+      - name: Transaction and rollback contract
+        run: |
+          grep -q 'createSnapshotStore' server/core.mjs
+          grep -q 'WEBAI_CORE_SNAPSHOT_DIR' server/core.mjs
+          grep -q 'withWorkspaceLock' server/core.mjs
+          grep -q 'approve|verify|rollback' server/core.mjs
+          grep -q 'service.rollback' server/core.mjs
+          grep -q 'snapshotStore' server/agent.mjs
+          grep -q 'executionId' server/agent.mjs
+          grep -q 'snapshot_captured' server/agent.mjs
+          grep -q 'rollback_completed' server/agent.mjs
+          grep -q 'completed_task_not_rollbackable' server/agent.mjs
+          grep -q 'async function prepare' server/native-worker.mjs
+          grep -q 'async function apply' server/native-worker.mjs
+      - name: Recovery contract
+        run: |
+          grep -q 'recoverOwnerState' server/core.mjs
+          grep -q 'recoverOwnerState' server/core-recovery.mjs
+          grep -q 'execution_recovered_applied' server/core-recovery.mjs
+          grep -q 'execution_recovered_to_snapshot' server/core-recovery.mjs
+          grep -q 'execution_recovery_conflict' server/core-recovery.mjs
+          grep -q 'validateApplied' server/snapshot-store.mjs
+          grep -q 'restoreCaptured' server/snapshot-store.mjs
+          ! grep -q 'TYPHOON_API_KEY' server/core-recovery.mjs
       - name: Snapshot foundation contract
         run: |
           grep -q 'createSnapshotStore' server/snapshot-store.mjs
           grep -q 'rollback_conflict' server/snapshot-store.mjs
           grep -q 'beforeSha256' server/snapshot-store.mjs
           grep -q 'afterSha256' server/snapshot-store.mjs
+          grep -q 'restoreCaptured' server/snapshot-store.mjs
           grep -q 'snapshot_store_inside_workspace' server/snapshot-store.mjs
           ! grep -q 'TYPHOON_API_KEY' server/snapshot-store.mjs
       - name: Frontend Agent/Core split contract
@@ -77,6 +104,8 @@ jobs:
           grep -q 'Core Execute' core-mode.js
           grep -q 'Run Agent → Ask Typhoon' app-core.js
           grep -q 'isTaskReady' core-mode.js
+          grep -q 'rollbackTaskBtn' core-mode.js
+          grep -q '/rollback' core-mode.js
           grep -q 'Native Worker' core-mode.js
           ! grep -qi 'browserpod' app.js
           ! grep -qi 'browser-linux' app.js

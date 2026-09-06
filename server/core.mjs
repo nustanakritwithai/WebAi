@@ -6,10 +6,13 @@ import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { URL } from "node:url";
 import { createAgentService } from "./agent.mjs";
+import { recoverOwnerState } from "./core-recovery.mjs";
+import { createSnapshotStore } from "./snapshot-store.mjs";
 
 const PORT = Number(process.env.CORE_PORT || "8790");
 const WORKSPACE = process.env.WEBAI_WORKSPACE || "";
 const STATE_DIR = process.env.WEBAI_CORE_STATE_DIR || resolve(process.cwd(), ".webai", "owners");
+const SNAPSHOT_DIR = process.env.WEBAI_CORE_SNAPSHOT_DIR || resolve(STATE_DIR, "..", "snapshots");
 const PROXY_BASE = (process.env.TYPHOON_PROXY_BASE_URL || "").replace(/\/+$/, "");
 const PROXY_TOKEN = process.env.TYPHOON_PROXY_TOKEN || "";
 const PAIRING_TOKEN = process.env.WEBAI_CORE_PAIRING_TOKEN || "";
@@ -21,6 +24,7 @@ const REQUESTS_PER_MINUTE = 90;
 const MAX_BODY_BYTES = 64 * 1024;
 const services = new Map();
 const buckets = new Map();
+let workspaceQueue = Promise.resolve();
 
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65_535) throw new Error("CORE_PORT must be an integer between 1 and 65535");
 
@@ -31,6 +35,13 @@ function envBool(name, fallback = false) {
 }
 
 const NATIVE_ENABLED = envBool("WEBAI_NATIVE_WORKER_ENABLED", true);
+const snapshotStore = createSnapshotStore({ workspace: WORKSPACE, snapshotRoot: SNAPSHOT_DIR });
+
+function withWorkspaceLock(operation) {
+  const run = workspaceQueue.then(operation, operation);
+  workspaceQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
 
 function validProxyBase() {
   if (!PROXY_BASE) return false;
@@ -256,15 +267,25 @@ async function unavailableWorker() {
 
 function serviceForOwner(ownerId) {
   if (services.has(ownerId)) return services.get(ownerId);
-  const service = createAgentService({
-    requestModel,
-    runWorker: unavailableWorker,
-    runVerification,
-    statePath: ownerStatePath(ownerId),
+  const statePath = ownerStatePath(ownerId);
+  const pending = (async () => {
+    await recoverOwnerState({ ownerId, statePath, snapshotStore, withWorkspaceLock });
+    return createAgentService({
+      requestModel,
+      runWorker: unavailableWorker,
+      runVerification,
+      statePath,
+      ownerId,
+      snapshotStore,
+      withWorkspaceLock,
+    });
+  })().catch((error) => {
+    services.delete(ownerId);
+    throw error;
   });
-  services.set(ownerId, service);
+  services.set(ownerId, pending);
   if (services.size > 100) services.delete(services.keys().next().value);
-  return service;
+  return pending;
 }
 
 function coreCapabilities() {
@@ -273,6 +294,8 @@ function coreCapabilities() {
   return {
     webaiCore: { enabled: true, configured: validProxyBase() && authReady, lifecycle: "supervised" },
     nativeWorker: { enabled: NATIVE_ENABLED, configured: NATIVE_ENABLED && workspaceReady, mode: "guarded-file-worker" },
+    snapshotStore: { enabled: true, configured: workspaceReady && Boolean(SNAPSHOT_DIR), mode: "durable-transaction" },
+    recovery: { enabled: true, configured: workspaceReady && Boolean(SNAPSHOT_DIR), mode: "pre-service-reconcile" },
     verification: { enabled: true, configured: workspaceReady, command: "npm test" },
     taskStore: { enabled: true, configured: Boolean(STATE_DIR), ownership: "signed-session" },
     sessionAuth: { enabled: true, configured: authReady, ttlSeconds: SESSION_TTL_SECONDS },
@@ -298,9 +321,11 @@ const server = http.createServer(async (req, res) => {
       return send(req, res, 200, {
         ok: true,
         service: "webai-core",
-        version: "0.5.0",
+        version: "0.6.0",
         configured: capabilities.webaiCore.configured,
         nativeWorkerConfigured: capabilities.nativeWorker.configured,
+        snapshotConfigured: capabilities.snapshotStore.configured,
+        recoveryConfigured: capabilities.recovery.configured,
         authConfigured: capabilities.sessionAuth.configured,
         capabilities,
       });
@@ -322,9 +347,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     const session = ownerSession(req);
-    const service = serviceForOwner(session.ownerId);
+    const service = await serviceForOwner(session.ownerId);
     const isCollection = url.pathname === "/api/tasks";
-    const match = url.pathname.match(/^\/api\/tasks\/([^/]+)(?:\/(approve|verify))?$/);
+    const match = url.pathname.match(/^\/api\/tasks\/([^/]+)(?:\/(approve|verify|rollback))?$/);
 
     if (isCollection && req.method === "POST") {
       return send(req, res, 201, { task: await service.createTask(await readJson(req)) });
@@ -338,17 +363,21 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET" && !action) return send(req, res, 200, { task: service.getTask(taskId) });
       if (req.method === "POST" && action === "approve") return send(req, res, 200, { task: await service.approveAndExecute(taskId) });
       if (req.method === "POST" && action === "verify") return send(req, res, 200, { task: await service.verify(taskId) });
+      if (req.method === "POST" && action === "rollback") return send(req, res, 200, { task: await service.rollback(taskId) });
       return send(req, res, 405, { error: "method_not_allowed" });
     }
 
     return send(req, res, 404, { error: "not_found" });
   } catch (error) {
-    return send(req, res, Number(error?.status) || 500, { error: error?.message || "core_error" });
+    return send(req, res, Number(error?.status) || 500, {
+      error: error?.message || "core_error",
+      ...(Array.isArray(error?.files) ? { files: error.files.slice(0, 16) } : {}),
+    });
   }
 });
 
 server.listen(PORT, "127.0.0.1", () => {
   const caps = coreCapabilities();
   console.log(`WebAi Core listening on 127.0.0.1:${PORT}`);
-  console.log(`Proxy: ${validProxyBase()} | NativeWorker: ${caps.nativeWorker.configured} | SessionAuth: ${caps.sessionAuth.configured}`);
+  console.log(`Proxy: ${validProxyBase()} | NativeWorker: ${caps.nativeWorker.configured} | Snapshot: ${caps.snapshotStore.configured} | Recovery: ${caps.recovery.configured} | SessionAuth: ${caps.sessionAuth.configured}`);
 });
