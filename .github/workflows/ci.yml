@@ -20,6 +20,7 @@ jobs:
         run: |
           node --check server/index.mjs
           node --check server/core.mjs
+          node --check server/core-recovery.mjs
           node --check server/agent.mjs
           node --check server/native-worker.mjs
           node --check server/snapshot-store.mjs
@@ -33,6 +34,7 @@ jobs:
           node --check scripts/agent-smoke.mjs
           node --check scripts/native-worker-smoke.mjs
           node --check scripts/snapshot-smoke.mjs
+          node --check scripts/recovery-smoke.mjs
       - name: Secret proxy contract
         run: |
           grep -q 'webai-typhoon-proxy' server/index.mjs
@@ -72,6 +74,16 @@ jobs:
           grep -q 'completed_task_not_rollbackable' server/agent.mjs
           grep -q 'async function prepare' server/native-worker.mjs
           grep -q 'async function apply' server/native-worker.mjs
+      - name: Recovery contract
+        run: |
+          grep -q 'recoverOwnerState' server/core.mjs
+          grep -q 'recoverOwnerState' server/core-recovery.mjs
+          grep -q 'execution_recovered_applied' server/core-recovery.mjs
+          grep -q 'execution_recovered_to_snapshot' server/core-recovery.mjs
+          grep -q 'execution_recovery_conflict' server/core-recovery.mjs
+          grep -q 'validateApplied' server/snapshot-store.mjs
+          grep -q 'restoreCaptured' server/snapshot-store.mjs
+          ! grep -q 'TYPHOON_API_KEY' server/core-recovery.mjs
       - name: Snapshot foundation contract
         run: |
           grep -q 'createSnapshotStore' server/snapshot-store.mjs
