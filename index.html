@@ -4,142 +4,316 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#07101f">
-  <title>WebAi · AI Software Engineering CPU</title>
+  <meta name="description" content="WebAi — AI Software Engineering Workspace">
+  <title>WebAi · AI Software Engineering Workspace</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-<header class="topbar">
-  <a class="brand" href="./"><span class="logo">W</span><div><strong>WebAi</strong><small>AI Software Engineering CPU · V0.1</small></div></a>
-  <nav><a href="#console">Console</a><a href="./roadmap.html">Roadmap</a><a href="./IMPLEMENTATION_PLAN.md">Plan</a><a href="https://opentyphoon.ai/" target="_blank" rel="noreferrer">OpenTyphoon</a></nav>
-  <span id="health" class="pill warn"><span class="statusDot"></span>รอ Backend URL</span>
-</header>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="WebAi Home">
+      <span class="logo">W</span>
+      <div><strong>WebAi</strong><small>AI Software Engineering Workspace · UI V0.2</small></div>
+    </a>
 
-<div class="shell">
-  <aside class="sidebar">
-    <section class="projectSection">
-      <div class="sectionTitle">PROJECT</div>
-      <div class="project active"><span class="projectIcon">◈</span><div><b>WebAi</b><small>nustanakritwithai/WebAi</small></div><span class="version">V0.1</span></div>
-    </section>
+    <button id="projectSwitcher" class="projectSwitcher" type="button" aria-label="Current project">
+      <span class="projectMark">◈</span>
+      <span><small>PROJECT</small><b>WebAi</b></span>
+      <i>⌄</i>
+    </button>
 
-    <section class="stackSection">
-      <div class="sectionTitle">AI STACK</div>
-      <div class="agent"><span id="typhoonDot" class="dot"></span><b>OpenTyphoon</b><em>THINK</em></div>
-      <div class="agent"><span class="dot on"></span><b>AI CPU</b><em>CONTROL</em></div>
-      <div class="agent"><span class="dot"></span><b>ECC</b><em>KNOW HOW</em></div>
-      <div class="agent"><span id="ompDot" class="dot"></span><b>OMP</b><em>DO</em></div>
-      <div class="agent"><span class="dot"></span><b>Hermes</b><em>MEMORY</em></div>
-      <div class="agent"><span class="dot"></span><b>OpenClaw</b><em>COMMS</em></div>
-      <div class="agent"><span class="dot"></span><b>Harpoon</b><em>MEASURE</em></div>
-    </section>
+    <nav class="topnav" aria-label="Primary">
+      <a href="#home">Home</a>
+      <a href="#workspace">Workspace</a>
+      <a href="./roadmap.html">Roadmap</a>
+    </nav>
 
-    <section class="config" id="connect">
-      <div class="sectionTitle">CONNECT BACKEND</div>
-      <div class="connectCard">
-        <div class="connectIntro"><span class="connectIcon">↗</span><div><b>เชื่อมต่อ VPS</b><small id="connectionSummary">ใส่ URL ของ Secret Proxy / Backend</small></div></div>
-        <div class="miniSteps">
-          <span id="stepUrl" class="miniStep active"><i>1</i> URL</span>
-          <span id="stepHealth" class="miniStep"><i>2</i> Health</span>
-          <span id="stepReady" class="miniStep"><i>3</i> Ready</span>
+    <button id="commandBtn" class="commandBtn" type="button" aria-label="Open command palette">
+      <span>⌕</span><b>Command</b><kbd>Ctrl K</kbd>
+    </button>
+
+    <button id="systemButton" class="systemButton" type="button" aria-label="Open connection settings">
+      <span id="systemDot" class="statusDot warn"></span>
+      <span><small>SYSTEM</small><b id="systemLabel">รอ Backend</b></span>
+      <i>⌄</i>
+    </button>
+  </header>
+
+  <div class="appShell">
+    <aside class="rail" aria-label="Workspace navigation">
+      <div class="railGroup">
+        <span class="railTitle">WORKSPACE</span>
+        <a class="railItem active" href="#home"><span>⌂</span><b>Home</b></a>
+        <a class="railItem" href="#tasks"><span>✓</span><b>Tasks</b><em id="taskCount">0</em></a>
+        <a class="railItem" href="#files"><span>▤</span><b>Files</b></a>
+        <a class="railItem" href="#preview"><span>◫</span><b>Preview</b></a>
+      </div>
+
+      <div class="railGroup">
+        <span class="railTitle">INTELLIGENCE</span>
+        <a class="railItem" href="#memory"><span>◉</span><b>Memory</b></a>
+        <a class="railItem" href="#monitor"><span>⌁</span><b>Monitor</b></a>
+      </div>
+
+      <div class="railSpacer"></div>
+
+      <button id="settingsBtn" class="railItem railButton" type="button">
+        <span>⚙</span><b>Connections</b>
+      </button>
+      <a class="railItem" href="./IMPLEMENTATION_PLAN.md"><span>?</span><b>Plan</b></a>
+    </aside>
+
+    <main class="main" id="home">
+      <section class="overviewBar" aria-label="System status">
+        <div class="overviewItem">
+          <span id="backendStatusDot" class="tinyDot warn"></span>
+          <div><small>BACKEND</small><b id="backendState">รอ URL</b></div>
         </div>
-        <label>API Base URL<input id="apiBase" inputmode="url" autocomplete="url" placeholder="https://api.example.com"></label>
-        <label>Session token <small>ไม่บังคับ</small><input id="sessionToken" type="password" autocomplete="off" placeholder="optional"></label>
-        <button id="saveConfig" class="primary connectBtn">เชื่อมต่อ Backend</button>
-        <p class="hint">API key ของ OpenTyphoon ต้องอยู่บน VPS เท่านั้น และจะไม่ถูกส่งมาที่ Browser</p>
-      </div>
-    </section>
-  </aside>
+        <div class="overviewItem">
+          <span id="typhoonStatusDot" class="tinyDot idle"></span>
+          <div><small>OPENTYPHOON</small><b id="typhoonState">ยังไม่ตรวจ</b></div>
+        </div>
+        <div class="overviewItem">
+          <span id="ompStatusDot" class="tinyDot idle"></span>
+          <div><small>OMP</small><b id="ompState">ยังไม่ตรวจ</b></div>
+        </div>
+        <button id="openConnection" class="overviewAction" type="button">จัดการการเชื่อมต่อ <span>→</span></button>
+      </section>
 
-  <main class="workspace">
-    <section class="statusGrid" aria-label="System status">
-      <div class="statusCard"><span class="statusIcon">◉</span><div><small>BACKEND</small><b id="backendState">รอ URL</b></div><span id="backendBadge" class="miniBadge wait">WAIT</span></div>
-      <div class="statusCard"><span class="statusIcon">✦</span><div><small>OPENTYPHOON</small><b id="typhoonState">ยังไม่ตรวจ</b></div><span id="typhoonBadge" class="miniBadge wait">WAIT</span></div>
-      <div class="statusCard"><span class="statusIcon">⌘</span><div><small>OMP</small><b id="ompState">ยังไม่ตรวจ</b></div><span id="ompBadge" class="miniBadge wait">WAIT</span></div>
-      <div class="statusCard"><span class="statusIcon">✓</span><div><small>VERIFICATION</small><b id="gateState">รอ Task</b></div><span class="miniBadge neutral">0/8</span></div>
-    </section>
+      <section class="welcome">
+        <div>
+          <span class="eyebrow">AI SOFTWARE ENGINEERING CPU</span>
+          <h1>วันนี้อยากให้ AI <span>สร้างหรือแก้อะไร?</span></h1>
+          <p>บอกเป้าหมายเดียว ที่เหลือ WebAi จะเลือก Typhoon, OMP และขั้นตอนตรวจสอบให้เหมาะกับงาน</p>
+        </div>
+        <div class="modelMini">
+          <span>PRIMARY MODEL</span>
+          <b id="modelName">OpenTyphoon</b>
+          <small id="modelStatus">รอเชื่อม Backend</small>
+        </div>
+      </section>
 
-    <section id="setupGuide" class="setupGuide">
-      <div class="setupBadge">QUICK START</div>
-      <div class="setupCopy"><h2>เริ่มใช้งานใน 3 ขั้นตอน</h2><p>เชื่อม VPS ก่อน แล้วจึงสั่งให้ Typhoon คิด วางแผน และส่งงานต่อให้ OMP</p></div>
-      <div class="setupSteps">
-        <div><span>1</span><b>ใส่ Backend URL</b><small>URL ของ VPS ที่เก็บ API key</small></div>
-        <i>→</i>
-        <div><span>2</span><b>เชื่อมต่อ</b><small>WebAi ตรวจ /api/health</small></div>
-        <i>→</i>
-        <div><span>3</span><b>เริ่มสั่งงาน</b><small>Ask · Plan · OMP</small></div>
-      </div>
-      <button id="goConnect" class="secondary">ไปที่การเชื่อมต่อ</button>
-    </section>
-
-    <section class="heroPanel">
-      <div>
-        <span class="eyebrow">AI CONTROL CENTER</span>
-        <h1>สั่งงาน AI จากเว็บเดียว<br><span>คิด → ทำ → ตรวจ → จำ</span></h1>
-        <p>OpenTyphoon เป็นสมองหลัก · ECC เตรียม Know-how · OMP ลงมือ · Tests + Harpoon ตรวจผล · Hermes เก็บความจำ</p>
-      </div>
-      <div class="modelCard"><small>PRIMARY MODEL</small><strong id="modelName">รอเชื่อมต่อ</strong><span>OpenAI-compatible API</span></div>
-    </section>
-
-    <section class="grid" id="console">
-      <div class="panel chatPanel">
-        <div class="panelHead">
-          <div><span class="panelKicker">WORKSPACE</span><b>คอนโซลงาน AI</b><small>พิมพ์สิ่งที่ต้องการ แล้วเลือกว่าจะถาม วางแผน หรือให้ OMP ลงมือ</small></div>
+      <section class="newTaskCard" aria-labelledby="newTaskTitle">
+        <div class="newTaskHead">
+          <div>
+            <span class="sectionKicker">NEW TASK</span>
+            <h2 id="newTaskTitle">Describe the outcome</h2>
+          </div>
           <span id="taskStatus" class="pill warn">รอ Backend</span>
         </div>
 
-        <div id="messages" class="messages">
-          <div class="bubble assistant"><b>WebAi</b><div>พร้อมช่วยทำงานครับ ขั้นแรกเชื่อม Backend ทางซ้ายก่อน เมื่อสถานะ Typhoon เป็น “พร้อม” ปุ่มสั่งงานจะเปิดอัตโนมัติ</div></div>
+        <textarea id="taskInput" rows="5" placeholder="เช่น: เพิ่มหน้า Login พร้อม validation, test และตรวจ regression"></textarea>
+
+        <div class="contextRow">
+          <div class="quickPrompts" aria-label="Quick prompts">
+            <button class="promptChip" data-prompt="วิเคราะห์โครงสร้างโปรเจกต์นี้และเสนอสิ่งที่ควรทำต่อ" type="button">วิเคราะห์โปรเจกต์</button>
+            <button class="promptChip" data-prompt="เพิ่มหน้า Login พร้อม validation และ automated test" type="button">สร้างหน้า Login</button>
+            <button class="promptChip" data-prompt="ตรวจหาบั๊กที่ทำให้ build หรือ runtime ล้ม พร้อมเสนอ regression test" type="button">แก้บั๊ก</button>
+          </div>
+          <span id="connectionHint">ยังไม่ได้เชื่อม Backend</span>
         </div>
 
-        <div class="quickPrompts" aria-label="ตัวอย่างคำสั่ง">
-          <button class="promptChip" data-prompt="วิเคราะห์โครงสร้างโปรเจกต์นี้และเสนอสิ่งที่ควรทำต่อ">วิเคราะห์โปรเจกต์</button>
-          <button class="promptChip" data-prompt="เพิ่มหน้า Login พร้อม validation และ automated test">สร้างหน้า Login</button>
-          <button class="promptChip" data-prompt="ตรวจหาบั๊กที่อาจทำให้ build หรือ runtime ล้ม และเสนอวิธีแก้">ตรวจบั๊ก</button>
+        <div class="runBar">
+          <label class="modeSelect">
+            <span>MODE</span>
+            <select id="taskMode" aria-label="Task mode">
+              <option value="auto">Auto</option>
+              <option value="plan">Plan only</option>
+              <option value="ask">Ask AI</option>
+              <option value="execute">Execute with OMP</option>
+              <option value="review">Review</option>
+            </select>
+          </label>
+          <div class="runHints">
+            <span><i class="legend auto"></i> Auto เลือกขั้นตอนให้</span>
+            <span><i class="legend safe"></i> Verification ก่อน DONE</span>
+          </div>
+          <button id="runTaskBtn" class="primary runTaskBtn" type="button" disabled>
+            <span>Run Task</span><i>→</i>
+          </button>
         </div>
+      </section>
 
-        <div class="composer">
-          <textarea id="taskInput" rows="5" placeholder="เช่น: เพิ่มหน้า Login พร้อม validation และ test"></textarea>
-          <div class="composerMeta"><span>Ctrl/⌘ + Enter เพื่อถาม Typhoon</span><span id="connectionHint">ยังไม่ได้เชื่อม Backend</span></div>
-          <div class="actions">
-            <button id="planBtn" class="secondary" disabled><span>≡</span> สร้างแผน</button>
-            <button id="ompBtn" class="secondary" disabled><span>⌘</span> ส่งให้ OMP</button>
-            <button id="sendBtn" class="primary" disabled><span>➤</span> ถาม Typhoon</button>
+      <section class="currentTask" id="tasks">
+        <div class="sectionHead">
+          <div><span class="sectionKicker">CURRENT TASK</span><h2>งานที่กำลังทำ</h2></div>
+          <div class="sectionActions">
+            <button id="clearTaskBtn" class="ghostBtn" type="button">Clear</button>
           </div>
         </div>
-      </div>
 
-      <div class="sidecol">
-        <div class="panel planPanel">
-          <div class="panelHead"><div><span class="panelKicker">STRUCTURED OUTPUT</span><b>แผนงาน</b><small>สร้างจาก OpenTyphoon</small></div></div>
-          <pre id="planBox" class="planBox">ยังไม่มีแผน
+        <div class="taskGrid">
+          <article class="taskSummary">
+            <div class="taskIdentity">
+              <span id="currentTaskId" class="taskId">NO TASK</span>
+              <h3 id="currentTaskGoal">ยังไม่มีงานที่กำลังทำ</h3>
+              <p id="currentTaskDetail">พิมพ์เป้าหมายด้านบนแล้วกด Run Task</p>
+            </div>
 
-พิมพ์เป้าหมายใน Console แล้วกด “สร้างแผน”</pre>
+            <div class="progressSteps" id="progressSteps" aria-label="Task progress">
+              <div class="progressStep"><span>1</span><div><b>Understand</b><small>เป้าหมาย</small></div></div>
+              <i></i>
+              <div class="progressStep"><span>2</span><div><b>Plan</b><small>วิธีทำ</small></div></div>
+              <i></i>
+              <div class="progressStep"><span>3</span><div><b>Execute</b><small>ลงมือ</small></div></div>
+              <i></i>
+              <div class="progressStep"><span>4</span><div><b>Verify</b><small>หลักฐาน</small></div></div>
+            </div>
+
+            <div class="taskMeta">
+              <div><small>AGENT</small><b id="activeAgent">Idle</b></div>
+              <div><small>MODEL</small><b id="activeModel">—</b></div>
+              <div><small>MODE</small><b id="activeMode">—</b></div>
+              <div><small>ELAPSED</small><b id="elapsedTime">—</b></div>
+            </div>
+          </article>
+
+          <article class="timelineCard">
+            <div class="cardHead"><div><span class="sectionKicker">TIMELINE</span><h3>สิ่งที่ระบบกำลังทำ</h3></div><button id="clearTimelineBtn" class="ghostBtn" type="button">ล้าง</button></div>
+            <div id="timeline" class="timeline">
+              <div class="emptyState compact"><span>◎</span><b>ยังไม่มีเหตุการณ์</b><small>Timeline จะอัปเดตเมื่อเริ่ม Task</small></div>
+            </div>
+          </article>
         </div>
+      </section>
 
-        <div class="panel verifyPanel">
-          <div class="panelHead"><div><span class="panelKicker">QUALITY GATE</span><b>ด่านตรวจสอบ</b><small>AI บอกว่าเสร็จ ≠ DONE</small></div></div>
-          <div class="checks">
-            <span><i>○</i> Build</span><span><i>○</i> Unit Test</span><span><i>○</i> Integration</span><span><i>○</i> Browser</span><span><i>○</i> ECC Review</span><span><i>○</i> Security</span><span><i>○</i> Harpoon</span><span><i>○</i> Regression</span>
+      <section class="workspaceSection" id="workspace">
+        <div class="sectionHead">
+          <div><span class="sectionKicker">WORKSPACE</span><h2>ผลลัพธ์และหลักฐาน</h2></div>
+          <div class="workspaceTabs" role="tablist">
+            <button class="tabBtn active" data-tab="plan" type="button">Plan</button>
+            <button class="tabBtn" data-tab="preview" type="button">Preview</button>
+            <button class="tabBtn" data-tab="diff" type="button">Diff</button>
+            <button class="tabBtn" data-tab="tests" type="button">Tests</button>
           </div>
-          <div class="gateFooter"><span>Verification จะเริ่มเมื่อมี Task run จริง</span></div>
         </div>
+
+        <div class="workspaceGrid">
+          <div class="tabStage">
+            <section id="tab-plan" class="tabPanel active">
+              <div class="emptyState" id="planEmpty"><span>≡</span><b>ยังไม่มีแผน</b><small>เมื่อ Typhoon สร้างแผน Structured output จะอยู่ตรงนี้</small></div>
+              <pre id="planBox" class="planBox hidden"></pre>
+            </section>
+
+            <section id="tab-preview" class="tabPanel">
+              <div class="previewToolbar">
+                <div><span class="previewDot"></span><b>Live Preview</b><small id="previewStatus">ยังไม่เชื่อม dev server</small></div>
+                <div class="deviceSwitch"><button class="active" type="button">Desktop</button><button type="button">Tablet</button><button type="button">Mobile</button></div>
+              </div>
+              <div class="previewCanvas">
+                <div class="emptyState"><span>◫</span><b>Preview ยังไม่พร้อม</b><small>เมื่อ OMP เปิด dev server หน้าเว็บจะปรากฏที่นี่</small></div>
+              </div>
+            </section>
+
+            <section id="tab-diff" class="tabPanel">
+              <div class="diffSummary"><b id="diffHeadline">0 files changed</b><span id="diffStats">+0 −0</span></div>
+              <div class="emptyState"><span>±</span><b>ยังไม่มีการเปลี่ยนไฟล์</b><small>Diff จะอัปเดตหลัง OMP แก้ repository</small></div>
+            </section>
+
+            <section id="tab-tests" class="tabPanel">
+              <div class="emptyState"><span>✓</span><b>ยังไม่มี test run</b><small>ผล build, tests และ regression จะรวมอยู่ตรงนี้</small></div>
+            </section>
+          </div>
+
+          <aside class="inspector">
+            <div class="inspectorHead"><span class="sectionKicker">INSPECTOR</span><h3>Verification</h3><small>LLM บอกว่าเสร็จ ≠ DONE</small></div>
+            <div class="verificationList" id="verificationList">
+              <div><span class="checkDot idle">○</span><b>Build</b><em>Waiting</em></div>
+              <div><span class="checkDot idle">○</span><b>Unit Tests</b><em>Waiting</em></div>
+              <div><span class="checkDot idle">○</span><b>Integration</b><em>Waiting</em></div>
+              <div><span class="checkDot idle">○</span><b>Browser</b><em>Waiting</em></div>
+              <div><span class="checkDot idle">○</span><b>ECC Review</b><em>Waiting</em></div>
+              <div><span class="checkDot idle">○</span><b>Security</b><em>Waiting</em></div>
+              <div><span class="checkDot idle">○</span><b>Harpoon</b><em>Waiting</em></div>
+              <div><span class="checkDot idle">○</span><b>Regression</b><em>Waiting</em></div>
+            </div>
+            <div class="gateResult">
+              <span id="gateBadge" class="gateBadge waiting">WAITING</span>
+              <p id="gateMessage">เริ่ม Verification หลังมี Task run จริง</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="lowerGrid">
+        <article class="card" id="monitor">
+          <div class="cardHead"><div><span class="sectionKicker">SYSTEM HEALTH</span><h3>AI Team</h3></div><button id="openInspectorBtn" class="ghostBtn" type="button">Details</button></div>
+          <div class="teamGrid">
+            <div><span id="teamTyphoon" class="tinyDot idle"></span><b>Typhoon</b><small id="teamTyphoonText">Waiting</small></div>
+            <div><span class="tinyDot ok"></span><b>AI CPU</b><small>Ready</small></div>
+            <div><span id="teamOmp" class="tinyDot idle"></span><b>OMP</b><small id="teamOmpText">Waiting</small></div>
+            <div><span class="tinyDot idle"></span><b>ECC</b><small>Planned</small></div>
+            <div><span class="tinyDot idle"></span><b>Hermes</b><small>Planned</small></div>
+            <div><span class="tinyDot idle"></span><b>Harpoon</b><small>Planned</small></div>
+          </div>
+        </article>
+
+        <article class="card eventsCard">
+          <div class="cardHead"><div><span class="sectionKicker">OBSERVABILITY</span><h3>Runtime Events</h3></div><button id="clearLog" class="ghostBtn" type="button">ล้าง</button></div>
+          <div id="eventLog" class="eventLog"><div class="emptyLog">ยังไม่มี event · ระบบจะแสดง metadata โดยไม่ log secret</div></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div id="connectionDrawer" class="drawerBackdrop" aria-hidden="true">
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <div class="drawerHead">
+        <div><span class="sectionKicker">CONNECTIONS</span><h2 id="drawerTitle">Backend & OpenTyphoon</h2></div>
+        <button id="closeDrawer" class="iconBtn" type="button" aria-label="Close">×</button>
       </div>
-    </section>
 
-    <section class="panel eventPanel">
-      <div class="panelHead"><div><span class="panelKicker">OBSERVABILITY</span><b>เหตุการณ์ระหว่างทำงาน</b><small>แสดงเฉพาะ metadata — ไม่ log secret</small></div><button id="clearLog" class="ghostBtn">ล้าง</button></div>
-      <div id="eventLog" class="eventLog"><div class="emptyLog">ยังไม่มี event · ระบบจะเริ่มบันทึกหลังเชื่อม Backend</div></div>
-    </section>
+      <div class="connectionFlow">
+        <div id="stepUrl" class="connectionStep active"><span>1</span><div><b>Backend URL</b><small>Secret Proxy / VPS</small></div></div>
+        <i></i>
+        <div id="stepHealth" class="connectionStep"><span>2</span><div><b>Health</b><small>/api/health</small></div></div>
+        <i></i>
+        <div id="stepReady" class="connectionStep"><span>3</span><div><b>Ready</b><small>Typhoon + OMP</small></div></div>
+      </div>
 
-    <section class="flow" aria-label="Agent workflow">
-      <div><b>1. THINK</b><span>OpenTyphoon</span></div><i>→</i><div><b>2. KNOW HOW</b><span>ECC</span></div><i>→</i><div><b>3. DO</b><span>OMP</span></div><i>→</i><div><b>4. VERIFY</b><span>Tests + Harpoon</span></div><i>→</i><div><b>5. REMEMBER</b><span>Hermes</span></div>
-    </section>
-  </main>
-</div>
+      <div class="connectionForm">
+        <label>API Base URL
+          <input id="apiBase" inputmode="url" autocomplete="url" placeholder="https://api.example.com">
+          <small>ใส่เฉพาะ base URL ไม่ต้องใส่ /api</small>
+        </label>
+        <label>Session token <em>optional</em>
+          <input id="sessionToken" type="password" autocomplete="off" placeholder="optional">
+          <small>ใช้เฉพาะเมื่อ VPS เปิด WEBUI_CONTROL_TOKEN</small>
+        </label>
+        <button id="saveConfig" class="primary fullBtn" type="button">เชื่อมต่อ Backend</button>
+      </div>
 
-<nav class="mobileNav" aria-label="Mobile navigation">
-  <a href="#console">Console</a><a href="#connect">Connect</a><a href="./roadmap.html">Roadmap</a>
-</nav>
+      <div class="connectionResult">
+        <span id="connectionResultIcon" class="resultIcon">○</span>
+        <div><b id="connectionSummary">ยังไม่ได้เชื่อมต่อ</b><small id="connectionDetail">API key ของ Typhoon ต้องอยู่บน VPS เท่านั้น</small></div>
+      </div>
 
-<script src="./app.js" defer></script>
+      <div class="securityNote">
+        <span>🔒</span>
+        <p><b>Secret stays server-side.</b> WebAi จะไม่เก็บหรือแสดง OpenTyphoon API key ใน browser</p>
+      </div>
+    </aside>
+  </div>
+
+  <div id="commandPalette" class="paletteBackdrop" aria-hidden="true">
+    <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div class="paletteInput"><span>⌕</span><input id="commandInput" placeholder="Search or run command..." autocomplete="off"><kbd>Esc</kbd></div>
+      <div class="paletteList" id="paletteList">
+        <button data-command="new-task" type="button"><span>＋</span><div><b>New Task</b><small>เริ่มงานใหม่</small></div></button>
+        <button data-command="connect" type="button"><span>↗</span><div><b>Connect Backend</b><small>ตั้งค่า VPS / Secret Proxy</small></div></button>
+        <button data-command="workspace" type="button"><span>◫</span><div><b>Open Workspace</b><small>Plan · Preview · Diff · Tests</small></div></button>
+        <button data-command="roadmap" type="button"><span>→</span><div><b>Open Roadmap</b><small>ดูแผน V0.1 → V1.0</small></div></button>
+      </div>
+    </div>
+  </div>
+
+  <nav class="mobileNav" aria-label="Mobile navigation">
+    <a class="active" href="#home"><span>⌂</span><b>Home</b></a>
+    <a href="#tasks"><span>✓</span><b>Tasks</b></a>
+    <a href="#home"><span class="mobileRun">＋</span><b>New</b></a>
+    <a href="#workspace"><span>◫</span><b>Workspace</b></a>
+    <button id="mobileMoreBtn" type="button"><span>•••</span><b>More</b></button>
+  </nav>
+
+  <script src="./app.js" defer></script>
 </body>
 </html>
