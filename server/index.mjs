@@ -60,15 +60,30 @@ const HARPOON_URL = process.env.HARPOON_URL || "";
 const PREVIEW_ENABLED = envBool("PREVIEW_ENABLED");
 const PREVIEW_BASE_URL = process.env.PREVIEW_BASE_URL || "";
 
+const SAFE_ORIGINS = new Set(["https://nustanakritwithai.github.io"]);
 const configuredOrigins = (process.env.ALLOWED_ORIGINS || "https://nustanakritwithai.github.io")
   .split(",")
   .map((value) => value.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
+for (const origin of configuredOrigins) {
+  let url;
+  try {
+    url = new URL(origin);
+  } catch {
+    throw new Error("ALLOWED_ORIGINS contains an invalid origin");
+  }
+  const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+    && ["http:", "https:"].includes(url.protocol);
+  if (!SAFE_ORIGINS.has(origin) && !isLocal) {
+    throw new Error("ALLOWED_ORIGINS contains an unsupported origin");
+  }
+}
+
 function allowedOrigin(origin) {
   if (!origin) return true;
   const normalized = origin.replace(/\/$/, "");
-  if (configuredOrigins.includes(normalized)) return true;
+  if (configuredOrigins.includes(normalized) && (SAFE_ORIGINS.has(normalized) || new URL(normalized).hostname === "localhost" || new URL(normalized).hostname === "127.0.0.1" || new URL(normalized).hostname === "[::1]")) return true;
   try {
     const url = new URL(origin);
     return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
@@ -244,6 +259,13 @@ function capabilityRegistry() {
   };
 }
 
+function ompChildEnvironment() {
+  const allowedNames = ["PATH", "PATHEXT", "SYSTEMROOT", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"];
+  return Object.fromEntries(allowedNames
+    .filter((name) => typeof process.env[name] === "string" && process.env[name])
+    .map((name) => [name, process.env[name]]));
+}
+
 function runOmp(prompt) {
   const capabilities = capabilityRegistry();
   if (!capabilities.omp.enabled) {
@@ -259,12 +281,10 @@ function runOmp(prompt) {
   return new Promise((resolve, reject) => {
     const child = spawn(OMP_COMMAND, ["--mode", "rpc", "--no-session"], {
       cwd: WEBAI_WORKSPACE,
-      env: process.env,
+      env: ompChildEnvironment(),
       stdio: ["pipe", "pipe", "pipe"],
     });
 
-    let stdout = "";
-    let stderr = "";
     let finalText = "";
     let done = false;
     let buffer = "";
@@ -276,11 +296,8 @@ function runOmp(prompt) {
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk) => {
-      stderr = (stderr + chunk).slice(-20_000);
-    });
+    child.stderr.resume();
     child.stdout.on("data", (chunk) => {
-      stdout = (stdout + chunk).slice(-50_000);
       buffer += chunk;
       let newline;
       while ((newline = buffer.indexOf("\n")) >= 0) {
@@ -308,15 +325,14 @@ function runOmp(prompt) {
 
     child.on("error", (error) => {
       clearTimeout(timeout);
-      reject(Object.assign(new Error(`omp_spawn_failed:${error.message}`), { status: 503 }));
+      reject(Object.assign(new Error("omp_spawn_failed"), { status: 503 }));
     });
     child.on("close", (code) => {
       clearTimeout(timeout);
       if (done && code === 0) {
         return resolve({ ok: true, worker: "omp", content: finalText, verification: null });
       }
-      const safeDetail = (stderr || stdout).replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]").slice(-4000);
-      reject(Object.assign(new Error(`omp_exit_${code}:${safeDetail}`), { status: 502 }));
+      reject(Object.assign(new Error("omp_failed"), { status: 502 }));
     });
   });
 }

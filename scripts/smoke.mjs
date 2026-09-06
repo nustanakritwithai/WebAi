@@ -23,7 +23,7 @@ try {
   const health = await waitForHealth();
   const healthText = await health.text();
   const healthJson = JSON.parse(healthText);
-  if (!healthJson.ok || healthJson.provider !== "opentyphoon" || healthJson.keyConfigured !== true || healthText.includes(placeholder)) {
+  if (!healthJson.ok || healthJson.provider !== "opentyphoon" || healthJson.keyConfigured !== true || healthJson.ompEnabled !== false || healthJson.capabilities?.omp?.enabled !== false || healthText.includes(placeholder)) {
     throw new Error("health response is not safe or does not match the contract");
   }
 
@@ -45,13 +45,22 @@ try {
   for (let requestNumber = 0; requestNumber < 31; requestNumber += 1) {
     const response = await fetch(`http://127.0.0.1:${port}/api/typhoon/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": "smoke-rate-test" },
       body: "{}",
     });
     rateStatuses.push(response.status);
   }
   if (rateStatuses.slice(0, 30).some((status) => status !== 400) || rateStatuses[30] !== 429) {
     throw new Error("rate limit did not return the expected HTTP status");
+  }
+
+  const omp = await fetch(`http://127.0.0.1:${port}/api/omp/prompt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: "inspect" }),
+  });
+  if (omp.status !== 503 || (await omp.json()).error !== "omp_disabled") {
+    throw new Error("disabled OMP bridge did not fail closed");
   }
   console.log("SMOKE PASS: health, CORS rejection, exact CORS allowlist, redaction, and rate limit");
 } finally {

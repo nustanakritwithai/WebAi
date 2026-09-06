@@ -6,6 +6,8 @@ $projectPath = 'C:\WebAi'
 $environmentPath = 'C:\ProgramData\WebAi\typhoon-proxy.env'
 $logPath = 'C:\ProgramData\WebAi\webai-typhoon-proxy.log'
 $requiredNames = @('TYPHOON_API_KEY', 'TYPHOON_BASE_URL', 'TYPHOON_MODEL', 'PORT')
+$optionalNames = @('ALLOWED_ORIGINS', 'WEB_AUTH_TOKEN', 'WEBAI_WORKSPACE', 'OMP_ENABLED', 'OMP_COMMAND', 'OMP_PROVIDER', 'OMP_MODEL', 'ECC_ENABLED', 'ECC_ROOT', 'HERMES_ENABLED', 'HERMES_HOME', 'OPENCLAW_ENABLED', 'OPENCLAW_URL', 'HARPOON_ENABLED', 'HARPOON_URL', 'PREVIEW_ENABLED', 'PREVIEW_BASE_URL')
+$supportedNames = $requiredNames + $optionalNames
 
 function Write-ProxyLog([string]$message) {
     Add-Content -LiteralPath $logPath -Value "$(Get-Date -Format o) $message"
@@ -19,12 +21,15 @@ $values = @{}
 foreach ($line in Get-Content -LiteralPath $environmentPath) {
     if ($line -match '^\s*(?:#.*)?$') { continue }
     if ($line -notmatch '^([A-Z0-9_]+)=(.*)$') { throw 'WebAi environment file has an invalid line.' }
-    if ($requiredNames -notcontains $matches[1]) { throw 'WebAi environment file has an unsupported variable name.' }
+    if ($supportedNames -notcontains $matches[1]) { throw 'WebAi environment file has an unsupported variable name.' }
     $values[$matches[1]] = $matches[2]
 }
 foreach ($name in $requiredNames) {
     if (-not $values.ContainsKey($name) -or [string]::IsNullOrWhiteSpace($values[$name])) { throw "WebAi environment is missing $name." }
     Set-Item -Path "Env:$name" -Value $values[$name]
+}
+foreach ($name in $optionalNames) {
+    if ($values.ContainsKey($name)) { Set-Item -Path "Env:$name" -Value $values[$name] }
 }
 
 Set-Location -LiteralPath $projectPath
