@@ -10,6 +10,10 @@
   };
 
   load("./app-core.js", () => {
-    // Browser Agent runs entirely in the page through the existing Host A proxy.
+    // Browser Agent remains the primary no-Host-B workflow.
+    // Core Execute is an optional execution plane layered on top.
+    load("./core-bridge.js", () => {
+      load("./core-execute.js", () => load("./diff-evidence.js"));
+    });
   });
 })();
