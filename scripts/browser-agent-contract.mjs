@@ -20,6 +20,9 @@ const checks = [
   ["preview uses the current task folder files", core.includes('readTaskFiles(task.id, ["index.html", "style.css", "app.js"])') && core.includes("composeWorkspaceDocument")],
   ["preview is sandboxed without same-origin", core.includes('setAttribute("sandbox", "allow-scripts")') && !/setAttribute\("sandbox",\s*"[^\"]*allow-same-origin/i.test(core)],
   ["verification observes iframe load and runtime evidence", core.includes('iframe.addEventListener("load"') && core.includes("runtimeErrors") && core.includes("iframe_loaded")],
+  ["recovered browser tasks return to a safe preview gate", core.includes("async function restoreBrowserMemory()") && core.includes('if (recovered.status === "completed") recovered.status = "awaiting_preview"') && core.includes("reconcileBrowserTaskEvidence")],
+  ["workspace edits invalidate task-bound preview and verification evidence", core.includes("function invalidateBrowserTaskEvidence") && core.includes("workspacePreviewState = null") && core.includes('task.status = "awaiting_preview"') && core.includes("exact_revisions")],
+  ["new-task control clears only active task state and preserves task folders", html.includes('id="newTaskControl"') && core.includes('document.addEventListener("webai:new-task", () => resetTask())') && !core.includes("deleteTaskFolder")],
   ["release assets are cache-busted", /(?:app|workspace)\.js\?v=dev/.test(html) && pages.includes("cache-bust.mjs") && app.includes("assetVersion")],
   ["browser agent stays out of remote browser workers", app.includes("browser-memory-client.js") && app.includes('executionTarget = "browser-agent"') && !app.toLowerCase().includes("browserpod") && !app.toLowerCase().includes("browser-linux")]
 ];
