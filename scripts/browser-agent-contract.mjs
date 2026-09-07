@@ -26,6 +26,7 @@ const checks = [
   ["new task cannot accept stale generation output", core.includes("function isCurrentGeneration") && core.includes("if (!isCurrentGeneration(task, generationId)) return;") && core.includes("state.busy = false;")],
   ["document tasks are saved without requiring browser preview", core.includes('artifactKind === "document"') && core.includes('task.status = task.artifactKind === "browser" ? "awaiting_preview" : "saved"')],
   ["agent automatically creates artifacts after planning", core.includes('await generateAndSaveBrowserDemo(task, "automatic")') && core.includes("async function generateAndSaveBrowserDemo")],
+  ["browser artifacts automatically open and run Preview after saving", core.includes("let autoPreviewRequested = false") && core.includes('autoPreviewRequested = true') && core.includes('selectTab("preview")') && core.includes("await runWorkspacePreview()")],
   ["plans cannot render model source as chat code cards", core.includes("function browserPlanWithoutSource") && core.includes("do not include source code, fenced code blocks, or file contents")],
   ["generated output is summarized instead of rendered as raw cards", core.includes("renderArtifactSummary") && !core.includes("showPlan(demo)") && html.includes("artifactSummary")],
   ["preview uses the current task folder files", core.includes('readTaskFiles(task.id, ["index.html", "style.css", "app.js"])') && core.includes("composeWorkspaceDocument")],

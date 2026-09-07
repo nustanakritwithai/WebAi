@@ -1275,6 +1275,7 @@ async function approveAgentExecution() {
 async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
   if (!task?.id) return;
   const generationId = `${task.id}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  let autoPreviewRequested = false;
   task.generationId = generationId;
   setAgentError("");
   state.busy = true;
@@ -1353,10 +1354,14 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
     applyAgentTask(task);
     addTimeline("Artifacts saved", `Saved ${task.appliedFiles.length} file${task.appliedFiles.length === 1 ? "" : "s"} inside ${task.workspaceFolder}`, "ok");
     log(`Browser artifacts saved · ${task.id}`, "ok");
-    els.currentTaskDetail.textContent = task.artifactKind === "browser" ? `Artifacts saved in ${task.workspaceFolder} — open Preview and Run Preview` : `Documents saved in ${task.workspaceFolder} — open Workspace to read or edit`;
-    // Automatic generation ends in the Files destination so the active task
-    // folder and its generated tree are immediately visible on the right.
-    selectTab("files");
+    if (task.artifactKind === "browser") {
+      autoPreviewRequested = true;
+      els.currentTaskDetail.textContent = `Artifacts saved in ${task.workspaceFolder} — opening Preview and running automatically`;
+      addTimeline("Opening Sandbox Preview", "All browser artifacts are saved; starting Preview automatically", "working");
+    } else {
+      els.currentTaskDetail.textContent = `Documents saved in ${task.workspaceFolder} — open Workspace to read or edit`;
+      selectTab("files");
+    }
   } catch (error) {
     if (!isCurrentGeneration(task, generationId)) return;
     const recoverable = isRecoverableArtifactError(error);
@@ -1375,8 +1380,14 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
     els.taskStatus.textContent = "Agent error";
     els.taskStatus.className = "pill bad";
   } finally {
-    if (isCurrentGeneration(task, generationId)) state.busy = false;
-    applyActionState();
+    if (isCurrentGeneration(task, generationId)) {
+      state.busy = false;
+      applyActionState();
+      if (autoPreviewRequested) {
+        selectTab("preview");
+        await runWorkspacePreview();
+      }
+    }
   }
 }
 
