@@ -1095,7 +1095,20 @@ function browserStepEvidenceIsValid(step) {
   const readback = step?.evidence?.readback;
   if (!readback?.ok || !readback.files || typeof readback.files !== "object") return false;
   return Array.isArray(step.targetFiles) && step.targetFiles.length > 0
-    && step.targetFiles.every((name) => readback.files[name]?.ok === true && Number(readback.files[name]?.revision) > 0);
+    && step.targetFiles.every((name) => {
+      const file = readback.files[name];
+      return file?.ok === true
+        && typeof file.path === "string"
+        && file.path.length > 0
+        && file.contentPresent === true
+        && Number.isInteger(Number(file.contentBytes))
+        && Number(file.contentBytes) >= 0
+        && Number.isInteger(Number(file.revision))
+        && Number(file.revision) > 0
+        && Number(file.version) === Number(file.revision)
+        && typeof file.hash === "string"
+        && /^[a-f0-9]{64}$/i.test(file.hash);
+    });
 }
 
 function validateBrowserPlanDependencies(steps) {

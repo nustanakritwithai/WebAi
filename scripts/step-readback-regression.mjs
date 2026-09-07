@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 const source = await readFile(new URL("../app-core.js", import.meta.url), "utf8");
-const start = source.indexOf("function readbackEvidenceForRecord");
+const start = source.indexOf("function browserStepEvidenceIsValid");
 const end = source.indexOf("\nfunction buildBrowserTaskHandoff", start);
 assert.ok(start >= 0 && end > start, "readback evidence helpers must remain available in app-core");
 
@@ -11,7 +11,7 @@ const context = {
   TextEncoder, Object, Number, Boolean, Date, String, RegExp,
   utf8Bytes: (value) => new TextEncoder().encode(value).byteLength
 };
-vm.runInNewContext(`${source.slice(start, end)}\nglobalThis.readbackEvidenceForRecord = readbackEvidenceForRecord;\nglobalThis.stepEvidenceForReadback = stepEvidenceForReadback;`, context);
+vm.runInNewContext(`${source.slice(start, end)}\nglobalThis.browserStepEvidenceIsValid = browserStepEvidenceIsValid;\nglobalThis.readbackEvidenceForRecord = readbackEvidenceForRecord;\nglobalThis.stepEvidenceForReadback = stepEvidenceForReadback;`, context);
 
 const step = { id: "step-1", targetFiles: ["index.html"] };
 const path = "tasks/BROWSER-12345678/index.html";
@@ -43,5 +43,11 @@ const missingHash = context.stepEvidenceForReadback(step, {
   [path]: { path, content, version: 1 }
 }, "tasks/BROWSER-12345678");
 assert.equal(missingHash.readback.ok, false, "missing hash must not pass readback evidence");
+
+const legacyEvidence = {
+  readback: { ok: true, files: { "index.html": { ok: true, revision: 1 } } }
+};
+assert.equal(context.browserStepEvidenceIsValid({ targetFiles: step.targetFiles, evidence: legacyEvidence }), false, "legacy incomplete evidence must be re-run");
+assert.equal(context.browserStepEvidenceIsValid({ targetFiles: step.targetFiles, evidence: complete }), true, "complete evidence can resume without rewriting the file");
 
 console.log("PASS step-1 readback evidence: path, revision/version, content presence/bytes, and hash are complete");
