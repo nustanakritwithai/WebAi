@@ -1052,14 +1052,35 @@ function normalizeBrowserScriptReference(code) {
 }
 
 function normalizeBrowserStylesheetReference(code) {
-  return String(code || "").replace(/<\s*link\b(?=[^>]*\brel\s*=\s*["'][^"']*\bstylesheet\b[^"']*["'])(?=[^>]*\bhref\s*=\s*["'](?:\.\/)?[^"'?#]+\.css(?:[?#][^"']*)?["'])[^>]*>/gi, "");
+  // style.css is injected by composeWorkspaceDocument. The fixed runnable
+  // file set has no local asset manifest for link tags, so remove every link
+  // element and keep the task runnable with local-only resources.
+  return String(code || "").replace(/<\s*link\b[^>]*>/gi, "");
+}
+
+function sanitizeBrowserPreviewFile(content, fileName) {
+  let value = String(content || "");
+  if (fileName === "index.html") {
+    value = normalizeBrowserStylesheetReference(normalizeBrowserScriptReference(value));
+    // The runnable file set has one local app.js. Drop any extra script
+    // element that points outside the task rather than failing a saved task.
+    value = value.replace(/<\s*script\b[^>]*\bsrc\s*=\s*["'](?:https?:|\/\/|data:|blob:|javascript:)[^"']*["'][^>]*>[\s\S]*?<\/\s*script\s*>/gi, "");
+    value = value.replace(/\s+(?:href|src|action|formaction)\s*=\s*(["'])(?:https?:|\/\/|data:|blob:|javascript:)[^"']*\1/gi, "");
+    // A generated inline style can still contain url(...). There is no local
+    // asset manifest for it, so remove only the resource expression and keep
+    // the surrounding layout declarations intact.
+    value = value.replace(/\burl\s*\(\s*[^)]*\)/gi, "");
+  } else if (fileName === "style.css") {
+    value = value.replace(/\burl\s*\(\s*[^)]*\)/gi, "");
+  }
+  return value;
 }
 
 function artifactFileContent(text, file) {
   const aliases = file.kind === "javascript" ? ["javascript", "js"] : [file.kind];
   const block = (fencedBlocks(text) || []).find((entry) => aliases.includes(String(entry.language || "").toLowerCase()));
   if (!block?.code?.trim()) throw new Error(`คำตอบสำหรับ ${file.name} ต้องมี code fence ภาษา ${aliases[0]}`);
-  const content = file.name === "index.html" ? normalizeBrowserScriptReference(block.code) : block.code;
+  const content = sanitizeBrowserPreviewFile(block.code, file.name);
   if (file.kind === "markdown" || file.kind === "text") {
     if (utf8Bytes(content) > AGENT_FILE_LIMIT) throw new Error(`${file.name} is larger than ${AGENT_FILE_LIMIT.toLocaleString()} bytes.`);
   } else validatePreviewCode(content, file.kind);
@@ -1532,27 +1553,47 @@ function previewToken() {
 }
 
 function composeWorkspaceDocument(files, token) {
-  const index = normalizeBrowserStylesheetReference(validatePreviewCode(files["index.html"], "html"));
+  const index = validatePreviewCode(sanitizeBrowserPreviewFile(files["index.html"], "index.html"), "html");
   const normalizedIndex = index
     .replace(/<\s*script\b[^>]*\bsrc\s*=\s*["'](?:\.\/)?app\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gi, "")
     .replace(/<\s*script\b[^>]*\bsrc\s*=\s*["'](?:\.\/)?app\.js(?:\?[^"']*)?["'][^>]*\/>/gi, "")
     .trim();
   if (/<\s*link\b/i.test(normalizedIndex)) throw new Error("Preview blocked: external stylesheet links are not allowed.");
-  const css = validatePreviewCode(files["style.css"], "css");
+  const css = validatePreviewCode(sanitizeBrowserPreviewFile(files["style.css"], "style.css"), "css");
   const app = validatePreviewCode(files["app.js"], "javascript");
   const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; font-src data:; media-src data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; navigate-to 'none'; popup: 'none'; download: 'none';";
   const meta = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}">`;
   const runtime = `<script>window.__webaiPreviewErrors=[];document.addEventListener('submit',function(e){e.preventDefault();},true);window.addEventListener('error',function(e){window.__webaiPreviewErrors.push(String(e.message||'runtime error'));window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:String(e.message||'runtime error')},'*');});window.addEventListener('unhandledrejection',function(e){var message=String(e.reason?.message||e.reason||'unhandled rejection');window.__webaiPreviewErrors.push(message);window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:message},'*');});window.addEventListener('load',function(){window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'ready'},'*');});</script>`;
   const style = `<style>${escapePreviewMarkup(css, "style")}</style>`;
+  const frameStyle = `<style id="webai-preview-frame-style">html,body{width:100%!important;min-width:100%!important;height:100%!important;min-height:100%!important}body{box-sizing:border-box;margin:0!important;overflow:auto}body> :first-child{box-sizing:border-box;min-height:100%!important}</style>`;
   const script = `<script>${escapePreviewMarkup(app, "script")}</script>`;
   if (/<\s*html\b/i.test(normalizedIndex)) {
     let documentMarkup = normalizedIndex;
-    if (/<\/head>/i.test(documentMarkup)) documentMarkup = documentMarkup.replace(/<\/head>/i, `${meta}${style}</head>`);
-    else documentMarkup = documentMarkup.replace(/<\s*html\b[^>]*>/i, (match) => `${match}<head>${meta}${style}</head>`);
+    if (/<\/head>/i.test(documentMarkup)) documentMarkup = documentMarkup.replace(/<\/head>/i, `${meta}${style}${frameStyle}</head>`);
+    else documentMarkup = documentMarkup.replace(/<\s*html\b[^>]*>/i, (match) => `${match}<head>${meta}${style}${frameStyle}</head>`);
     if (/<\/body>/i.test(documentMarkup)) return documentMarkup.replace(/<\/body>/i, `${runtime}${script}</body>`);
     return `${documentMarkup}${runtime}${script}`;
   }
-  return `<!doctype html><html><head>${meta}${style}</head><body>${normalizedIndex}${runtime}${script}</body></html>`;
+  return `<!doctype html><html><head>${meta}${style}${frameStyle}</head><body>${normalizedIndex}${runtime}${script}</body></html>`;
+}
+
+async function repairStoredPreviewFiles(workspace, task, records) {
+  const updates = [];
+  for (const name of ["index.html", "style.css", "app.js"]) {
+    const record = records[`${task.workspaceFolder}/${name}`];
+    if (!record) continue;
+    const repaired = sanitizeBrowserPreviewFile(record.content, name);
+    if (repaired === record.content) continue;
+    validatePreviewCode(repaired, artifactKindForName(name));
+    updates.push({ name, content: repaired });
+  }
+  if (!updates.length) return records;
+  const revisions = await workspace.writeTaskFiles(task.id, updates, { source: "browser-preview-repair", taskId: task.id });
+  task.appliedFiles = [...(Array.isArray(task.appliedFiles) ? task.appliedFiles.filter((item) => !updates.some((file) => `${task.workspaceFolder}/${file.name}` === item.path)) : []), ...revisions];
+  saveBrowserAgentTask();
+  addBrowserAgentEvent("preview_repair_applied", `Removed non-local resource references from ${updates.map((file) => file.name).join(", ")}; task files preserved`);
+  addTimeline("Repaired local preview assets", `${updates.length} task file${updates.length === 1 ? "" : "s"} sanitized before preview`, "ok");
+  return workspace.readTaskFiles(task.id, ["index.html", "style.css", "app.js"]);
 }
 
 async function runWorkspacePreview() {
@@ -1576,7 +1617,8 @@ async function runWorkspacePreview() {
   let onMessage = null;
   try {
     workspace.setActiveTask(taskId);
-    const records = await workspace.readTaskFiles(task.id, ["index.html", "style.css", "app.js"]);
+    let records = await workspace.readTaskFiles(task.id, ["index.html", "style.css", "app.js"]);
+    records = await repairStoredPreviewFiles(workspace, task, records);
     if (state.agentTask?.id !== taskId) throw new Error("Preview task changed while reading workspace files.");
     const files = Object.fromEntries(Object.entries(records).map(([path, record]) => [path.slice(path.lastIndexOf("/") + 1), record.content]));
     const token = previewToken();

@@ -1011,3 +1011,38 @@ html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDo
     touch-action:pan-y;
   }
 }
+
+/* The sandbox preview is a viewport, not a fixed-height code sample. Keep the
+   toolbar fixed and let the generated iframe consume every remaining pixel. */
+html[data-main-ui="v2"][data-shell="three-pane"] .tabStage > #tab-preview.active{
+  display:flex;
+  flex-direction:column;
+  height:100%;
+  min-height:0;
+  overflow:hidden;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #tab-preview .previewToolbar{
+  flex:0 0 auto;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #tab-preview .previewCanvas{
+  display:flex;
+  flex:1 1 auto;
+  width:auto;
+  height:auto;
+  min-height:0;
+  margin:12px 0 0;
+  border-radius:12px;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #tab-preview .workspacePreviewFrame{
+  display:block;
+  flex:1 1 auto;
+  width:100%;
+  height:100%;
+  min-height:0;
+  border:0;
+  border-radius:inherit;
+  background:#fff;
+}
