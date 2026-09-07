@@ -190,3 +190,100 @@ html[data-main-ui="v2"] :where(.workspaceGrid pre,.workspaceGrid code,.workspace
 @media(prefers-reduced-motion:reduce){
   html[data-main-ui="v2"],html[data-main-ui="v2"] *{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+/* Shell state overrides. The shell integration writes these attributes on
+   <html>; keep them at the end so they win over the legacy responsive rules
+   above without changing the existing component visual language. */
+html[data-main-ui="v2"][data-shell="three-pane"] .appShell{
+  min-height:calc(100dvh - 64px);
+  height:calc(100dvh - 64px);
+  overflow:hidden;
+}
+html[data-main-ui="v2"][data-shell="three-pane"] .main{
+  min-width:0;
+  min-height:0;
+  height:100%;
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane{
+  min-height:100%;
+  overflow:visible;
+}
+html[data-main-ui="v2"][data-shell="three-pane"] .composerDock{
+  position:sticky;
+  bottom:0;
+  z-index:4;
+  flex:0 0 auto;
+  margin-top:auto;
+  padding-top:10px;
+  background:linear-gradient(180deg,transparent,var(--v2-bg) 18%);
+}
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane{
+  min-width:0;
+  min-height:0;
+  height:100%;
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+
+@media(max-width:900px){
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell{
+    display:block;
+    height:auto;
+    min-height:calc(100dvh - 58px);
+    overflow:visible;
+  }
+  html[data-main-ui="v2"][data-shell="three-pane"] .topbar{
+    height:58px;
+    min-height:58px;
+  }
+  html[data-main-ui="v2"][data-shell="three-pane"] .main{
+    height:auto;
+    min-height:calc(100dvh - 58px);
+    overflow:visible;
+    padding-bottom:90px;
+  }
+  html[data-main-ui="v2"][data-shell="three-pane"] .rail{
+    display:block;
+    position:fixed;
+    inset:58px auto 0 0;
+    z-index:60;
+    width:min(300px,86vw);
+    height:auto;
+    transform:translateX(-105%);
+    transition:transform .18s ease;
+    box-shadow:20px 0 50px rgba(0,0,0,.38);
+  }
+  html[data-main-ui="v2"][data-shell="three-pane"][data-drawer-open="true"] .rail{
+    transform:translateX(0);
+  }
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane{
+    display:none;
+    position:fixed;
+    inset:58px 0 0;
+    z-index:31;
+    height:auto;
+    border:0;
+    overflow:auto;
+  }
+  html[data-main-ui="v2"][data-shell="three-pane"][data-mobile-panel="workspace"] .workspacePane{
+    display:block;
+  }
+  html[data-main-ui="v2"][data-shell="three-pane"][data-mobile-panel="workspace"] .main{
+    display:none;
+  }
+  html[data-main-ui="v2"][data-shell="three-pane"][data-mobile-panel="chat"] .main{
+    display:block;
+  }
+  html[data-main-ui="v2"][data-shell="three-pane"] .shellResizeHandle{
+    display:none;
+  }
+}
+
+@media(max-width:680px){
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > section,
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > .lowerGrid{
+    padding:12px;
+  }
+}

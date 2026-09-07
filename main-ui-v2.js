@@ -85,21 +85,18 @@
     if (lower) workspacePane.appendChild(lower);
     appShell.appendChild(workspacePane);
 
-    const conversation = el("div", "conversationPane");
-    conversation.dataset.shellRegion = "conversation";
-    const hero = $(".mainHeroV2");
-    const overview = $(".overviewBar");
     const composer = $(".newTaskCard");
-    const task = $("#tasks");
-    if (hero) conversation.appendChild(hero);
-    if (overview) conversation.appendChild(overview);
-    if (task) conversation.appendChild(task);
-    if (composer) {
+    if (composer && !composer.closest(".composerDock")) {
       const dock = el("div", "composerDock");
       dock.dataset.shellHook = "composer";
+      composer.replaceWith(dock);
       dock.appendChild(composer);
-      conversation.appendChild(dock);
     }
+    const conversation = el("div", "conversationPane");
+    conversation.dataset.shellRegion = "conversation";
+    // Keep the existing central content order. Moving the workspace regions
+    // above must not reorder task, overview, or composer content.
+    [...main.children].forEach((child) => conversation.appendChild(child));
     main.replaceChildren(conversation);
 
     const header = $(".topbar");
@@ -142,14 +139,44 @@
     reveal.setAttribute("aria-controls", "workspace");
     reveal.setAttribute("aria-expanded", "true");
     header?.appendChild(reveal);
-    wireShellControls({ root, rail, workspacePane, menu, toggle, reveal, resize, chatButton, workspaceButton });
+    wireShellControls({ root, rail, workspacePane, workspace, files, menu, toggle, reveal, resize, chatButton, workspaceButton });
   }
 
-  function wireShellControls({ root, rail, workspacePane, menu, toggle, reveal, resize, chatButton, workspaceButton }) {
+  function setWorkspaceView({ root, workspacePane, workspace, files }, view) {
+    const fileView = view === "files";
+    const workspaceGrid = workspace?.querySelector(".workspaceGrid");
+    if (workspace) {
+      workspace.hidden = false;
+      workspace.setAttribute("aria-hidden", "false");
+    }
+    if (workspaceGrid) {
+      workspaceGrid.hidden = fileView;
+      workspaceGrid.setAttribute("aria-hidden", String(fileView));
+    }
+    if (files) {
+      files.hidden = !fileView;
+      files.setAttribute("aria-hidden", String(!fileView));
+    }
+    workspacePane.dataset.workspaceView = fileView ? "files" : view;
+    root.dataset.workspaceView = fileView ? "files" : view;
+    workspacePane.querySelectorAll(".tabBtn").forEach((button) => {
+      const buttonView = button.dataset.workspaceTab || button.dataset.tab;
+      const active = fileView ? button.dataset.workspaceTab === "files" : buttonView === view;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+  }
+
+  function wireShellControls({ root, rail, workspacePane, workspace, files, menu, toggle, reveal, resize, chatButton, workspaceButton }) {
     const setDrawer = (open) => { root.dataset.drawerOpen = String(open); menu.setAttribute("aria-expanded", String(open)); };
     menu.addEventListener("click", () => setDrawer(root.dataset.drawerOpen !== "true"));
-    rail.addEventListener("click", (event) => { if (event.target.closest("a")) setDrawer(false); });
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape") setDrawer(false); });
+    const setPanel = (panel) => {
+      root.dataset.mobilePanel = panel;
+      chatButton.classList.toggle("active", panel === "chat");
+      workspaceButton.classList.toggle("active", panel === "workspace");
+      chatButton.setAttribute("aria-pressed", String(panel === "chat"));
+      workspaceButton.setAttribute("aria-pressed", String(panel === "workspace"));
+    };
     const setWorkspaceCollapsed = (collapsed) => {
       root.dataset.workspaceCollapsed = String(collapsed);
       if (toggle) {
@@ -158,7 +185,27 @@
       }
       reveal.textContent = collapsed ? "Show workspace" : "Workspace";
       reveal.setAttribute("aria-expanded", String(!collapsed));
+      if (window.matchMedia("(max-width: 900px)").matches) setPanel(collapsed ? "chat" : "workspace");
     };
+    rail.addEventListener("click", (event) => {
+      const link = event.target.closest("a");
+      if (link?.getAttribute("href") === "#files") {
+        event.preventDefault();
+        setWorkspaceCollapsed(false);
+        setWorkspaceView({ root, workspacePane, workspace, files }, "files");
+      } else if (link?.getAttribute("href") === "#preview") {
+        event.preventDefault();
+        setWorkspaceCollapsed(false);
+        setWorkspaceView({ root, workspacePane, workspace, files }, "preview");
+      }
+      if (event.target.closest("a,button")) setDrawer(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setDrawer(false);
+        if (window.matchMedia("(max-width: 900px)").matches) setPanel("chat");
+      }
+    });
     const toggleWorkspace = () => {
       const collapsed = root.dataset.workspaceCollapsed === "true";
       setWorkspaceCollapsed(!collapsed);
@@ -180,22 +227,25 @@
       const current = parseInt(getComputedStyle(root).getPropertyValue("--shell-right"), 10) || 520;
       root.style.setProperty("--shell-right", `${Math.max(400, Math.min(760, current + (event.key === "ArrowLeft" ? 24 : -24)))}px`);
     });
-    const setPanel = (panel) => {
-      root.dataset.mobilePanel = panel;
-      chatButton.classList.toggle("active", panel === "chat");
-      workspaceButton.classList.toggle("active", panel === "workspace");
-    };
     chatButton.addEventListener("click", () => setPanel("chat"));
-    workspaceButton.addEventListener("click", () => setPanel("workspace"));
-    window.addEventListener("resize", () => { if (window.innerWidth > 900) setPanel("chat"); });
+    workspaceButton.addEventListener("click", () => { setWorkspaceCollapsed(false); setPanel("workspace"); });
+    window.addEventListener("resize", () => {
+      if (window.innerWidth > 900 || root.dataset.workspaceCollapsed === "true") setPanel("chat");
+    });
     workspacePane.addEventListener("click", (event) => {
       const button = event.target.closest(".tabBtn");
       if (!button) return;
-      if ((button.dataset.workspaceTab || button.dataset.tab) === "files") {
-        ["plan", "preview", "diff", "tests"].forEach((name) => $(`#tab-${name}`)?.classList.toggle("active", name === "plan"));
-      }
-      if (window.innerWidth <= 900) setPanel("workspace");
+      const view = button.dataset.workspaceTab || button.dataset.tab || "plan";
+      // app-core owns normal tabs. Re-apply after its synchronous handler for
+      // the Files alias, whose markup intentionally keeps data-tab=plan.
+      queueMicrotask(() => {
+        setWorkspaceCollapsed(false);
+        setWorkspaceView({ root, workspacePane, workspace, files }, view);
+      });
     });
+    setWorkspaceView({ root, workspacePane, workspace, files }, "files");
+    setWorkspaceCollapsed(false);
+    root.__webAiShell = { setWorkspaceCollapsed, setWorkspaceView: (view) => setWorkspaceView({ root, workspacePane, workspace, files }, view), setPanel };
   }
 
   function upgradeNavigation() {
@@ -257,12 +307,47 @@
   }
 
   function installArtifactLinks() {
-    $(".artifactSummary")?.addEventListener("click", (event) => {
-      const row = event.target.closest("li");
+    const summary = $(".artifactSummary");
+    if (!summary || summary.dataset.uiBound === "true") return;
+    summary.dataset.uiBound = "true";
+    summary.addEventListener("click", (event) => {
+      const row = event.target.closest("li,[data-artifact-path]");
       if (!row) return;
-      const name = row.querySelector("span")?.textContent?.trim();
-      $("#workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      [...document.querySelectorAll(".workspaceTreeItem")].find((item) => item.querySelector(".workspaceTreeName")?.textContent?.trim() === name)?.click();
+      const target = row.dataset.artifactPath || row.dataset.path || row.querySelector("span")?.textContent?.trim();
+      if (!target) return;
+      const shell = document.documentElement.__webAiShell;
+      shell?.setWorkspaceCollapsed(false);
+      shell?.setWorkspaceView("files");
+      $(".workspacePane")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      const openFile = () => {
+        const wanted = String(target).replace(/^\/+/, "");
+        const items = [...document.querySelectorAll(".workspaceTreeItem[data-type='file']")];
+        const match = items.find((item) => {
+          const path = item.dataset.path || "";
+          const label = item.querySelector(".workspaceTreeName")?.textContent?.trim() || "";
+          return path === wanted || path.endsWith(`/${wanted}`) || label === wanted || (path.endsWith(`/${label}`) && wanted.endsWith(label));
+        });
+        if (match) {
+          match.click();
+          return true;
+        }
+        return false;
+      };
+      if (openFile()) return;
+      const retry = () => {
+        if (openFile()) return;
+        const tree = $("#workspaceTree");
+        if (!tree) return;
+        const observer = new MutationObserver(() => {
+          if (openFile()) observer.disconnect();
+        });
+        observer.observe(tree, { childList: true, subtree: true });
+        window.setTimeout(() => observer.disconnect(), 3000);
+      };
+      const workspaceReady = window.WebAiBrowserWorkspace?.ready;
+      if (workspaceReady?.then) workspaceReady.then(retry, retry);
+      else retry();
     });
   }
 

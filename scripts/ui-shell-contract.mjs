@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const html = await readFile(resolve(root, "index.html"), "utf8");
+const uiSource = await readFile(resolve(root, "main-ui-v2.js"), "utf8");
 
 // This deliberately uses the HTML structure instead of looking for CSS class text.
 // It is small, dependency-free, and sufficient for the stable shell contract.
@@ -88,6 +89,8 @@ check("composer input is multiline and has an adjacent send/run control", id("ta
 check("right workspace region has a tablist", workspace && hasDescendant(workspace, (node) => attr(node, "role") === "tablist"));
 const tablist = workspace && descendants(workspace, (node) => attr(node, "role") === "tablist")[0];
 check("workspace exposes Plan, Preview, Diff, and Tests tabs", tablist && ["plan", "preview", "diff", "tests"].every((value) => descendants(tablist, (node) => node.tag === "button" && attr(node, "data-tab") === value).length === 1));
+const filesTab = tablist && descendants(tablist, (node) => node.tag === "button" && hasText(node, "Files"))[0];
+check("Files tab uses an unambiguous files destination", filesTab && (attr(filesTab, "data-tab") === "files" || attr(filesTab, "data-workspace-tab") === "files"), filesTab ? `data-tab=${attr(filesTab, "data-tab")} data-workspace-tab=${attr(filesTab, "data-workspace-tab")}` : "Files tab missing");
 check("workspace tabs have matching panel structure", workspace && ["plan", "preview", "diff", "tests"].every((tab) => id(`tab-${tab}`) && id(`tab-${tab}`).parent === workspace.children.find((node) => node.type === "element" && attr(node, "class").includes("workspaceGrid"))?.children.find((node) => node.type === "element" && attr(node, "class").includes("tabStage"))));
 check("workspace includes file tree and editor hooks", workspace && id("workspaceTree")?.tag === "div" && id("workspaceEditor")?.tag === "div" && id("workspaceEditorInput")?.tag === "textarea");
 
@@ -99,6 +102,7 @@ check("required Agent controls remain actionable buttons", ["approveExecutionBtn
 requireIdList("task identity hooks remain present", ["currentTaskId", "currentTaskGoal", "uiCurrentTaskState", "uiCurrentTaskFolder"]);
 requireIdList("workspace identity and persistence hooks remain present", ["workspaceCurrentFolder", "workspaceStatus", "workspaceTree", "workspaceEditorPath", "workspaceEditorInput", "saveWorkspaceFile", "deleteWorkspaceItem"]);
 check("workspace scripts are loaded after the document structure", /<script[^>]+src=["']\.\/workspace\.js\?v=[^"']+["'][^>]*defer/i.test(html));
+check("shell keeps the hero two-column composition when docking the composer", !/conversation\.appendChild\(hero\);[\s\S]{0,260}if \(composer\) \{[\s\S]{0,120}dock\.appendChild\(composer\)/.test(uiSource));
 
 const duplicateIds = [...new Set(all.map((node) => attr(node, "id")).filter(Boolean))].filter((value) => all.filter((node) => attr(node, "id") === value).length > 1);
 check("DOM ids are unique for stable JavaScript hooks", duplicateIds.length === 0, duplicateIds.join(", "));
