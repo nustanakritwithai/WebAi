@@ -338,7 +338,10 @@
       request.onabort = () => reject(request.error || new Error("Workspace storage was aborted."));
     });
     await refresh();
-    selectedFolder = "";
+    // Keep generated Agent files scoped to the active task folder.  The old
+    // root selection made Files look empty or unrelated after an automatic
+    // artifact write, even though IndexedDB contained the records.
+    selectedFolder = taskFolder || activeTaskFolder || "";
     selectedPath = records[0].path;
     renderTree();
     renderEditor();
@@ -442,6 +445,16 @@
     }
   }
 
+  function revealActiveTask() {
+    if (!activeTaskFolder) return "";
+    selectedFolder = activeTaskFolder;
+    selectedPath = null;
+    renderTree();
+    renderEditor();
+    setCurrentFolderLabel();
+    return activeTaskFolder;
+  }
+
   async function listFiles() {
     if (!db) await ready;
     return items.filter((item) => item.type === "file").map((item) => ({ path: item.path, content: item.content || "", version: Number(item.version) || 1, updatedAt: item.updatedAt || null }));
@@ -481,6 +494,6 @@
   })();
   ready.catch(() => {});
 
-  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, listFiles, ensureTaskFolder, writeTaskFiles, readTaskFiles, listTaskFiles, readTaskContext, taskFolderForId, setActiveTask, getActiveTaskFolder: () => activeTaskFolder, subscribe, maxFileBytes: MAX_FILE_BYTES, maxTaskContextBytes: MAX_TASK_CONTEXT_BYTES, maxTaskContextFiles: MAX_TASK_CONTEXT_FILES };
+  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, listFiles, ensureTaskFolder, writeTaskFiles, readTaskFiles, listTaskFiles, readTaskContext, taskFolderForId, setActiveTask, revealActiveTask, getActiveTaskFolder: () => activeTaskFolder, subscribe, maxFileBytes: MAX_FILE_BYTES, maxTaskContextBytes: MAX_TASK_CONTEXT_BYTES, maxTaskContextFiles: MAX_TASK_CONTEXT_FILES };
   window.dispatchEvent(new CustomEvent("webai:workspace-ready"));
 })();

@@ -253,6 +253,7 @@
 
   function setWorkspaceView({ root, workspacePane, workspace, files }, view) {
     const fileView = view === "files";
+    if (fileView) window.WebAiBrowserWorkspace?.revealActiveTask?.();
     const workspaceGrid = workspace?.querySelector(".workspaceGrid");
     if (workspace) {
       workspace.hidden = false;

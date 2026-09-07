@@ -736,7 +736,8 @@ function applyAgentTask(task) {
     }
     if (els.planEmpty) els.planEmpty.classList.remove("hidden");
   }
-  if (task.worker?.content) showPlan(task.worker.content);
+  // Browser artifacts belong to Browser Workspace.  Keep the center limited
+  // to the conversational plan and never render worker/file content here.
   renderArtifactSummary(task);
   if (Array.isArray(task.events)) {
     const latest = task.events[task.events.length - 1];
@@ -1202,7 +1203,10 @@ async function continueBrowserAgentTask(goal, mode = "agent") {
   task.lastFailureStage = "";
   task.plan = null;
   task.demo = null;
-  task.appliedFiles = [];
+  // Preserve the last saved revisions until their replacements are written and
+  // read back. This keeps the same task folder usable if a follow-up fails.
+  task.artifactManifest = [];
+  task.artifactProgress = { pending: [], saved: [] };
   task.preview = null;
   task.verification = null;
   workspacePreviewState = null;
@@ -1315,7 +1319,9 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
     addTimeline("Artifacts saved", `Saved ${task.appliedFiles.length} file${task.appliedFiles.length === 1 ? "" : "s"} inside ${task.workspaceFolder}`, "ok");
     log(`Browser artifacts saved · ${task.id}`, "ok");
     els.currentTaskDetail.textContent = task.artifactKind === "browser" ? `Artifacts saved in ${task.workspaceFolder} — open Preview and Run Preview` : `Documents saved in ${task.workspaceFolder} — open Workspace to read or edit`;
-    selectTab("plan");
+    // Automatic generation ends in the Files destination so the active task
+    // folder and its generated tree are immediately visible on the right.
+    selectTab("files");
   } catch (error) {
     if (!isCurrentGeneration(task, generationId)) return;
     const recoverable = isRecoverableArtifactError(error);
@@ -1678,6 +1684,7 @@ function selectTab(name) {
     fileWorkspace.hidden = !fileView;
     fileWorkspace.setAttribute("aria-hidden", String(!fileView));
   }
+  if (fileView) window.WebAiBrowserWorkspace?.revealActiveTask?.();
   workspace?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
