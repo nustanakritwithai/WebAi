@@ -1257,12 +1257,23 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
     while (task.artifactProgress.pending.length) {
       if (!isCurrentGeneration(task, generationId)) return;
       const file = task.artifactProgress.pending[0];
-      const response = await requestBrowserAgentChat([
-        { role: "system", content: `Create only ${file.name}. Return exactly one fenced ${file.kind} block containing its full content, with no explanation. Keep it concise. No external URLs, network calls, backend calls, repository edits, filesystem operations, server tests, or native workers. For browser index.html, use <script src=\"app.js\"></script> and no inline JavaScript.` },
+      const requestFile = (repairError = "") => requestBrowserAgentChat([
+        { role: "system", content: `Create only ${file.name}. Return exactly one fenced ${file.kind} block containing its full content, with no explanation. Keep it concise. No external URLs, network calls, backend calls, repository edits, filesystem operations, server tests, or native workers. Use local in-memory data and DOM events only. For browser index.html, use <script src=\"app.js\"></script> and no inline JavaScript.${repairError ? ` The previous version was rejected: ${repairError}. Correct that exact issue.` : ""}` },
         { role: "user", content: `Goal: ${task.goal}\nRequest: ${task.latestCommand || task.goal}\nPlan: ${planText(task.plan)}\nTarget: ${file.name}` }
       ], "browser-artifact", task.id, { maxTokens: 3500 });
+      let response = await requestFile();
       if (!isCurrentGeneration(task, generationId)) return;
-      const content = artifactFileContent(typhoonAnswer(response), file);
+      let content;
+      try {
+        content = artifactFileContent(typhoonAnswer(response), file);
+      } catch (validationError) {
+        if (!/^(?:Preview blocked|คำตอบสำหรับ)/.test(String(validationError?.message || ""))) throw validationError;
+        addBrowserAgentEvent("file_repair_requested", `${file.name}: ${validationError.message}`);
+        addTimeline("Repairing generated file", `${file.name} violated the local-preview policy; retrying once`, "working");
+        response = await requestFile(validationError.message);
+        if (!isCurrentGeneration(task, generationId)) return;
+        content = artifactFileContent(typhoonAnswer(response), file);
+      }
       const revisions = await workspace.writeTaskFiles(task.id, [{ name: file.name, content }], { source: "browser-agent", taskId: task.id });
       const record = (await workspace.readTaskFiles(task.id, [file.name]))[`${task.workspaceFolder}/${file.name}`];
       if (!record || record.content !== content || Number(record.version) !== Number(revisions[0]?.version)) throw new Error(`Workspace readback failed for ${file.name}.`);
