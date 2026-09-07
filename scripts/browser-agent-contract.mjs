@@ -34,6 +34,7 @@ const checks = [
   ["workspace edits invalidate task-bound preview and verification evidence", core.includes("function invalidateBrowserTaskEvidence") && core.includes("workspacePreviewState = null") && core.includes('task.status = "awaiting_preview"') && core.includes("exact_revisions")],
   ["new-task control clears task UI but preserves task folders", html.includes('id="newTaskControl"') && core.includes('document.addEventListener("webai:new-task", () => resetTask())') && core.includes("els.planBox.replaceChildren()") && core.includes("els.artifactSummary.replaceChildren()") && !core.includes("deleteTaskFolder")],
   ["preview stays unavailable until task artifacts exist", core.includes("const canPreview") && core.includes("task?.appliedFiles") && core.includes("els.runWorkspacePreview.disabled = !canPreview")],
+  ["browser task controls do not depend on the currently selected run mode", core.includes("const canPreview = !state.busy && isBrowserAgentTask(task)") && core.includes("const canVerify = (!state.busy && isBrowserAgentTask(task)") && !core.includes("const canPreview = isBrowserAgentMode")],
   ["release assets are cache-busted", /(?:app|workspace)\.js\?v=dev/.test(html) && pages.includes("cache-bust.mjs") && app.includes("assetVersion")],
   ["browser agent stays out of remote browser workers", app.includes("browser-memory-client.js") && app.includes('executionTarget = "browser-agent"') && !app.toLowerCase().includes("browserpod") && !app.toLowerCase().includes("browser-linux")]
 ];

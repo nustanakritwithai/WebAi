@@ -467,12 +467,12 @@ function updateAgentActions() {
   const task = state.agentTask;
   const isBrowserAgentMode = ["agent", "auto"].includes(els.mode.value);
   const coreTask = state.coreTask;
-  const canResume = isBrowserAgentMode && !state.busy && isBrowserAgentTask(task) && task?.status === "awaiting_resume" && (!Array.isArray(task?.artifactManifest) || !task.artifactManifest.length || (Array.isArray(task?.artifactProgress?.pending) && task.artifactProgress.pending.length > 0));
-  const canApprove = (isBrowserAgentMode && !state.busy && isBrowserAgentTask(task) && (task?.status === "awaiting_approval" || canResume))
+  const canResume = !state.busy && isBrowserAgentTask(task) && task?.status === "awaiting_resume" && (!Array.isArray(task?.artifactManifest) || !task.artifactManifest.length || (Array.isArray(task?.artifactProgress?.pending) && task.artifactProgress.pending.length > 0));
+  const canApprove = (!state.busy && isBrowserAgentTask(task) && (task?.status === "awaiting_approval" || canResume))
     || (!state.busy && coreTask?.status === "awaiting_approval");
-  const canVerify = (isBrowserAgentMode && !state.busy && isBrowserAgentTask(task) && task?.status === "awaiting_verification" && workspacePreviewState?.loaded && workspacePreviewState.taskId === task.id)
+  const canVerify = (!state.busy && isBrowserAgentTask(task) && task?.status === "awaiting_verification" && workspacePreviewState?.loaded && workspacePreviewState.taskId === task.id)
     || (!state.busy && coreTask?.status === "awaiting_verification");
-  const canPreview = isBrowserAgentMode && !state.busy && isBrowserAgentTask(task)
+  const canPreview = !state.busy && isBrowserAgentTask(task)
     && Array.isArray(task?.appliedFiles) && task.appliedFiles.length > 0
     && task?.artifactKind !== "document"
     && ["awaiting_preview", "awaiting_verification", "verification_failed", "completed"].includes(task.status);
