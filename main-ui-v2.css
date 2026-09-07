@@ -1012,6 +1012,21 @@ html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDo
   }
 }
 
+/* Product shell cleanup: connection status, inspector, and system-health
+   cards are implementation surfaces, not user-facing workspace content.
+   Keep their DOM hooks alive for app-core status/verification updates, but
+   remove the rendered cards so chat and the active workspace get the space. */
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack > .overviewBar,
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceGrid > .inspector,
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > .lowerGrid > #monitor{
+  display:none !important;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > .lowerGrid{
+  display:grid;
+  grid-template-columns:1fr;
+}
+
 /* The sandbox preview is a viewport, not a fixed-height code sample. Keep the
    toolbar fixed and let the generated iframe consume every remaining pixel. */
 html[data-main-ui="v2"][data-shell="three-pane"] .tabStage > #tab-preview.active{
