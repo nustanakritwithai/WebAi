@@ -435,6 +435,93 @@ html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > *{
   }
 }
 
+/* Final Codex-style sizing pass: the answer stream owns the available center
+   height; the composer is only a compact input dock at the bottom. */
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane{
+  overflow:hidden;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding:20px clamp(14px,3vw,34px) 24px;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface .chatAnswerBody,
+html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface #tab-plan{
+  width:min(100%,900px);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface .chatAnswerBody{
+  min-height:clamp(220px,42vh,620px);
+  align-content:start;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock{
+  flex:0 0 auto;
+  max-height:132px;
+  padding:8px clamp(14px,3vw,34px) max(8px,env(safe-area-inset-bottom));
+  overflow:hidden;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock > .newTaskCard{
+  width:min(100%,900px);
+  max-height:116px;
+  padding:8px 10px;
+  border-radius:13px;
+  box-shadow:0 8px 22px rgba(0,0,0,.18);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock #taskInput{
+  height:48px;
+  min-height:48px;
+  max-height:72px;
+  resize:none;
+  padding:9px 11px;
+  line-height:1.35;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock .runBar{
+  grid-template-columns:auto 1fr auto;
+  gap:7px;
+  margin-top:6px;
+  padding-top:6px;
+  border-top:0;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock .modeSelect{
+  min-height:34px;
+  padding:5px 9px;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock .runTaskBtn{
+  min-width:104px;
+  min-height:36px;
+  padding:7px 12px;
+  border-radius:10px;
+}
+
+@media(max-width:900px){
+  html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface{
+    padding:14px 10px 18px;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface .chatAnswerBody{
+    min-height:220px;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock{
+    max-height:128px;
+    padding-inline:8px;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock > .newTaskCard{
+    max-height:112px;
+  }
+}
+
 /* Conversation-first center pane.  The outer shell owns the only horizontal
    split; the middle pane now reads as a standard chat surface. */
 html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane{
