@@ -1,11 +1,13 @@
 import { readFile } from "node:fs/promises";
 
-const [core, workspace, html, app, pages] = await Promise.all([
+const [core, workspace, html, app, pages, mainUi, mainCss] = await Promise.all([
   readFile(new URL("../app-core.js", import.meta.url), "utf8"),
   readFile(new URL("../workspace.js", import.meta.url), "utf8"),
   readFile(new URL("../index.html", import.meta.url), "utf8"),
   readFile(new URL("../app.js", import.meta.url), "utf8"),
-  readFile(new URL("../.github/workflows/pages.yml", import.meta.url), "utf8")
+  readFile(new URL("../.github/workflows/pages.yml", import.meta.url), "utf8"),
+  readFile(new URL("../main-ui-v2.js", import.meta.url), "utf8"),
+  readFile(new URL("../main-ui-v2.css", import.meta.url), "utf8")
 ]);
 
 const checks = [
@@ -39,6 +41,10 @@ const checks = [
   ["browser task controls do not depend on the currently selected run mode", core.includes("const canPreview = !state.busy && isBrowserAgentTask(task)") && core.includes("const canVerify = (!state.busy && isBrowserAgentTask(task)") && !core.includes("const canPreview = isBrowserAgentMode")],
   ["continue task advances the saved browser task instead of only focusing chat", core.includes("window.WebAiContinueTask = async") && core.includes('task.status === "awaiting_preview"') && core.includes("return runWorkspacePreview()") && core.includes("Complete the next unfinished implementation step")],
   ["follow-up keeps existing saved revisions until replacement artifacts are ready", core.includes("Preserve the last saved revisions") && core.includes("task.artifactManifest = []") && !core.includes("task.appliedFiles = [];\n  task.preview")],
+  ["main UI renders a plan-backed TODO without requiring the runtime state object", mainUi.includes('id = "planTodoPanel"') && mainUi.includes('PLAN_TODO_STORAGE_KEY = "webai.browserAgentTask"') && mainUi.includes("parsePlanSteps") && mainUi.includes("task?.steps")],
+  ["TODO supports the shared step status contract and dependency gating", mainUi.includes('"pending", "running", "blocked", "failed", "done"') && mainUi.includes("dependencies") && mainUi.includes("dependencyBlocked") && mainUi.includes("nextStepId")],
+  ["TODO continue action delegates to the existing Continue task control", mainUi.includes("dataset.planTodoAction") && mainUi.includes('$("#continueCurrentTaskBtn")?.click()') && mainUi.includes("nextButton.disabled")],
+  ["TODO has accessible status, acceptance, evidence, and responsive styles", mainUi.includes('aria-labelledby", "planTodoTitle"') && mainUi.includes("planTodoAcceptance") && mainUi.includes("planTodoEvidence") && mainCss.includes(".planTodoPanel") && mainCss.includes("@media(max-width:520px)")],
   ["release assets are cache-busted", /(?:app|workspace)\.js\?v=dev/.test(html) && pages.includes("cache-bust.mjs") && app.includes("assetVersion")],
   ["browser agent stays out of remote browser workers", app.includes("browser-memory-client.js") && app.includes('executionTarget = "browser-agent"') && !app.toLowerCase().includes("browserpod") && !app.toLowerCase().includes("browser-linux")]
 ];

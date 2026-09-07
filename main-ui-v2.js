@@ -458,6 +458,142 @@
     $("#taskInput")?.focus({ preventScroll: true });
   }
 
+  // Plan -> TODO is intentionally a read-only adapter over the task snapshot.
+  // Agent state may gain the structured schema in a later runtime change; until
+  // then this UI also understands the existing PLAN.md/plan text fallback.
+  const PLAN_TODO_STORAGE_KEY = "webai.browserAgentTask";
+  const TODO_STATUSES = new Set(["pending", "running", "blocked", "failed", "done"]);
+
+  function readBrowserTaskSnapshot() {
+    try {
+      const raw = window.localStorage?.getItem(PLAN_TODO_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function normalizeTodoStatus(status) {
+    const value = String(status || "").toLowerCase().replace(/[\s-]+/g, "_");
+    if (value === "complete" || value === "completed" || value === "success") return "done";
+    return TODO_STATUSES.has(value) ? value : "pending";
+  }
+
+  function parsePlanSteps(plan) {
+    if (plan && typeof plan === "object" && Array.isArray(plan.steps)) return plan.steps;
+    const text = typeof plan === "string" ? plan : "";
+    return text.split(/\r?\n/).map((line) => {
+      const match = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$/);
+      return match ? { title: match[1].replace(/\s+เกณฑ์:.*$/u, "").trim() } : null;
+    }).filter(Boolean);
+  }
+
+  function getPlanTodo(task) {
+    const plan = task?.plan;
+    const planObject = plan && typeof plan === "object"
+      ? plan
+      : (() => { try { return typeof plan === "string" && /^\s*(?:\{|\[)/.test(plan) ? JSON.parse(plan) : null; } catch { return null; } })();
+    const rawSteps = Array.isArray(task?.steps) ? task.steps : parsePlanSteps(planObject || plan);
+    const nextStepId = task?.nextStepId || planObject?.nextStepId;
+    const overallDone = ["completed", "saved"].includes(String(task?.status || "").toLowerCase());
+    const steps = rawSteps.map((raw, index) => {
+      const step = raw && typeof raw === "object" ? raw : { title: String(raw || "") };
+      const id = String(step.id || `step-${index + 1}`);
+      const dependencies = Array.isArray(step.dependencies) ? step.dependencies.map(String) : [];
+      let status = normalizeTodoStatus(step.status);
+      if (overallDone && !step.status) status = "done";
+      if (!step.status && nextStepId && id === String(nextStepId)) status = "running";
+      const dependencyBlocked = dependencies.some((dependency) => {
+        const dependencyStep = rawSteps.find((candidate) => String(candidate?.id || "") === dependency);
+        return dependencyStep && normalizeTodoStatus(dependencyStep.status) !== "done";
+      });
+      if (dependencyBlocked && status === "pending") status = "blocked";
+      return {
+        id,
+        title: String(step.title || step.name || `ขั้นตอนที่ ${index + 1}`),
+        status,
+        dependencies,
+        acceptance: String(step.acceptance || step.acceptanceCriteria || ""),
+        evidence: String(step.evidence || "")
+      };
+    });
+    if (!steps.some((step) => step.status === "running") && steps.some((step) => step.status === "pending")) {
+      const firstPending = steps.find((step) => step.status === "pending");
+      if (firstPending && !nextStepId) firstPending.status = "running";
+    }
+    return { planVersion: planObject?.planVersion || task?.planVersion || "—", steps };
+  }
+
+  function todoStatusLabel(status) {
+    return ({ pending: "รอทำ", running: "กำลังทำ", blocked: "ติด dependency", failed: "ไม่ผ่าน", done: "เสร็จ" })[status] || status;
+  }
+
+  function installPlanTodo() {
+    const anchor = $(".taskSummary .agentActions");
+    if (!anchor || $("#planTodoPanel")) return;
+    const panel = el("section", "planTodoPanel");
+    panel.id = "planTodoPanel";
+    panel.setAttribute("aria-labelledby", "planTodoTitle");
+    const head = el("div", "planTodoHead");
+    const titleWrap = el("div");
+    const kicker = el("span", "sectionKicker", "PLAN → TODO");
+    const title = el("h3", "", "ทำตามแผนทีละขั้น");
+    title.id = "planTodoTitle";
+    const meta = el("small", "planTodoMeta", "ยังไม่มีขั้นตอนจากแผน");
+    titleWrap.append(kicker, title, meta);
+    const nextButton = el("button", "workspaceAction primary planTodoContinue", "ทำต่อขั้นถัดไป →");
+    nextButton.type = "button";
+    nextButton.dataset.planTodoAction = "continue";
+    head.append(titleWrap, nextButton);
+    const list = el("ol", "planTodoList");
+    list.id = "planTodoList";
+    const empty = el("p", "planTodoEmpty", "เมื่อมีแผนที่มี steps รายการ TODO จะแสดงตรงนี้");
+    panel.append(head, list, empty);
+    anchor.insertAdjacentElement("afterend", panel);
+
+    const render = () => {
+      const task = readBrowserTaskSnapshot();
+      const { planVersion, steps } = getPlanTodo(task);
+      const running = ["planning", "executing", "applying", "previewing", "verifying"].includes(String(task?.status || ""));
+      const next = steps.find((step) => step.status === "running") || steps.find((step) => step.status === "pending");
+      const doneCount = steps.filter((step) => step.status === "done").length;
+      meta.textContent = steps.length ? `Plan v${planVersion} · ${doneCount}/${steps.length} เสร็จ · ${task?.status || "รอเริ่ม"}` : "ยังไม่มีขั้นตอนจากแผน";
+      list.replaceChildren();
+      empty.hidden = steps.length > 0;
+      steps.forEach((step, index) => {
+        const item = el("li", `planTodoItem is-${step.status}`);
+        item.dataset.stepId = step.id;
+        item.dataset.stepStatus = step.status;
+        const marker = el("span", "planTodoMarker", step.status === "done" ? "✓" : String(index + 1));
+        const copy = el("div", "planTodoCopy");
+        const row = el("div", "planTodoRow");
+        row.append(el("b", "planTodoStepTitle", step.title), el("span", "planTodoStatus", todoStatusLabel(step.status)));
+        copy.append(row);
+        if (step.acceptance) copy.append(el("small", "planTodoAcceptance", `เกณฑ์: ${step.acceptance}`));
+        if (step.evidence) copy.append(el("small", "planTodoEvidence", `หลักฐาน: ${step.evidence}`));
+        if (step.dependencies.length) copy.append(el("small", "planTodoDependencies", `ต่อจาก: ${step.dependencies.join(", ")}`));
+        item.append(marker, copy);
+        list.appendChild(item);
+      });
+      const canContinue = Boolean(next && !running && task && !["completed", "saved"].includes(String(task.status || "")) && next.status !== "blocked");
+      nextButton.disabled = !canContinue;
+      nextButton.textContent = running ? "กำลังทำขั้นปัจจุบัน…" : next ? `ทำต่อ: ${next.title} →` : "ทำต่อขั้นถัดไป →";
+      nextButton.title = next?.status === "blocked" ? "ต้องทำ dependency ก่อน" : "ทำต่อผ่าน context ของ task เดิม";
+      panel.dataset.planVersion = String(planVersion);
+      panel.dataset.nextStepId = next?.id || "";
+      panel.dataset.taskStatus = String(task?.status || "idle");
+    };
+    nextButton.addEventListener("click", () => $("#continueCurrentTaskBtn")?.click());
+    const refresh = () => window.requestAnimationFrame(render);
+    ["#currentTaskId", "#taskStatus", "#planBox"].forEach((selector) => {
+      const node = $(selector);
+      if (node) new MutationObserver(refresh).observe(node, { childList: true, characterData: true, subtree: true, attributes: true });
+    });
+    window.addEventListener("storage", (event) => { if (event.key === PLAN_TODO_STORAGE_KEY) render(); });
+    window.setInterval(render, 1000);
+    render();
+  }
+
   function installTaskFlowControls() {
     const continueButton = $("#continueCurrentTaskBtn");
     const newTaskButton = $("#newTaskControl");
@@ -603,6 +739,7 @@
     upgradeNavigation();
     installZoomControls();
     addSectionLabels();
+    installPlanTodo();
     installTaskFlowControls();
     installArtifactLinks();
   }
