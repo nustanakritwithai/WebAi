@@ -1832,6 +1832,23 @@ async function verifyCoreTask() {
 }
 function applyVerificationEvidence(data) { if (!data || !data.verification) return; const entries = $$("#verificationList > div"); const order = ["build","unit","integration","browser","ecc","security","harpoon","regression"]; let passed = 0; order.forEach((key, i) => { const value = data.verification[key]; if (value == null || !entries[i]) return; const dot = entries[i].querySelector(".checkDot"); const label = entries[i].querySelector("em"); const ok = value === true || value === "pass" || value?.status === "pass"; dot.textContent = ok ? "✓" : "×"; dot.className = `checkDot ${ok ? "pass" : "fail"}`; label.textContent = ok ? "Passed" : "Failed"; if (ok) passed++; }); if (passed === order.length) { els.gateBadge.textContent = "READY"; els.gateBadge.className = "gateBadge pass"; els.gateMessage.textContent = "Verification Gate ผ่านครบ พร้อมสำหรับการอนุมัติ"; } }
 
+window.WebAiContinueTask = async () => {
+  const task = state.agentTask;
+  if (!isBrowserAgentTask(task) || state.busy) {
+    els.input.focus({ preventScroll: true });
+    return;
+  }
+  if (["awaiting_approval", "awaiting_resume"].includes(task.status)) return approveAgentExecution();
+  if (task.status === "awaiting_preview") return runWorkspacePreview();
+  if (task.status === "awaiting_verification") return verifyAgentTask();
+  if (["completed", "saved"].includes(task.status)) return selectTab("files");
+  const command = els.input.value.trim() || "Continue the current task using its saved artifacts. Complete the next unfinished implementation step without creating a new task.";
+  els.input.value = command;
+  els.mode.value = "agent";
+  applyActionState();
+  return runTask();
+};
+
 async function runTask() {
   const rawGoal = els.input.value.trim();
   const goal = await safeMemoryText(rawGoal);
