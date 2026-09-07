@@ -125,10 +125,18 @@
     answerDetail.dataset.chatField = "detail";
     const answerStatus = el("span", "chatAnswerStatus");
     answerStatus.dataset.chatField = "status";
-    const answerPlan = el("p", "chatAnswerPlan");
-    answerPlan.dataset.chatField = "plan";
-    answerBody.append(answerGoal, answerDetail, answerStatus, answerPlan);
+    answerBody.append(answerGoal, answerDetail, answerStatus);
     answerSurface.append(answerTitle, answerBody);
+
+    // Keep the real plan panel in the center answer stream. Moving the node
+    // preserves app-core's existing #planBox/#planEmpty references and all
+    // listeners while removing plan content from the right workspace stage.
+    const planPanel = $("#tab-plan");
+    if (planPanel) {
+      planPanel.classList.add("centerPlanPanel");
+      planPanel.dataset.shellRegion = "center-answer";
+      answerSurface.appendChild(planPanel);
+    }
 
     main.replaceChildren(conversation);
     conversation.append(conversationHeader, answerSurface);
@@ -190,21 +198,14 @@
       const goal = read("#currentTaskGoal", "ยังไม่มีงานที่กำลังทำ");
       const detail = read("#currentTaskDetail", "พิมพ์เป้าหมายด้านบนแล้วกด Run Task");
       const status = read("#taskStatus", "รอ Backend");
-      const planBox = $("#planBox");
-      const planEmpty = $("#planEmpty");
-      const plan = planBox && !planBox.hidden && planBox.textContent.trim()
-        ? `แผนงาน: ${planBox.textContent.trim()}`
-        : (planEmpty?.textContent?.trim() || "แผนงานจะปรากฏหลังเริ่ม Task");
       const goalNode = field("goal");
       const detailNode = field("detail");
       const statusNode = field("status");
-      const planNode = field("plan");
       if (goalNode) goalNode.textContent = taskId === "NO TASK" ? goal : `${taskId} · ${goal}`;
       if (detailNode) detailNode.textContent = detail;
       if (statusNode) statusNode.textContent = status;
-      if (planNode) planNode.textContent = plan;
     };
-    ["#currentTaskId", "#currentTaskGoal", "#currentTaskDetail", "#taskStatus", "#planBox", "#planEmpty"].forEach((selector) => {
+    ["#currentTaskId", "#currentTaskGoal", "#currentTaskDetail", "#taskStatus"].forEach((selector) => {
       const node = $(selector);
       if (node) new MutationObserver(update).observe(node, { childList: true, characterData: true, subtree: true, attributes: true });
     });

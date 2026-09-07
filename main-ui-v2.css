@@ -758,3 +758,86 @@ html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > .shellResizeHa
     min-height:0;
   }
 }
+
+/* Codex-style composer: leave the conversation readable and keep task entry
+   to its essential input, mode and send controls. */
+html[data-main-ui="v2"][data-shell="three-pane"] .composerDock .newTaskHead,
+html[data-main-ui="v2"][data-shell="three-pane"] .composerDock .contextRow,
+html[data-main-ui="v2"][data-shell="three-pane"] .composerDock .quickPrompts,
+html[data-main-ui="v2"][data-shell="three-pane"] .composerDock #connectionHint,
+html[data-main-ui="v2"][data-shell="three-pane"] .composerDock .runHints{
+  display:none;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock > .newTaskCard{
+  padding:10px 12px;
+  border-radius:14px;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock #taskInput{
+  min-height:52px;
+  padding:11px 13px;
+  line-height:1.45;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock .runBar{
+  grid-template-columns:minmax(112px,auto) 1fr auto;
+  gap:8px;
+  margin-top:8px;
+  padding-top:8px;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock .runTaskBtn{
+  min-width:116px;
+  min-height:40px;
+}
+
+@media(min-width:901px){
+  /* The center is an answer stream.  The real plan panel follows the answer
+     block so app-core can update it without creating a second workspace view. */
+  html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface{
+    order:1;
+    display:flex;
+    flex:1 1 auto;
+    flex-direction:column;
+    gap:18px;
+    padding:28px clamp(18px,5vw,44px);
+    background:linear-gradient(180deg,rgba(10,22,38,.42),rgba(7,16,29,.16));
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface .chatAnswerBody,
+  html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface #tab-plan{
+    width:min(100%,820px);
+    margin-inline:auto;
+    box-sizing:border-box;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface #tab-plan{
+    display:block;
+    margin-top:2px;
+    padding:18px;
+    border:1px solid rgba(106,168,255,.18);
+    border-radius:16px;
+    background:rgba(7,17,30,.62);
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] #chatAnswerSurface #tab-plan .emptyState{
+    width:100%;
+    margin:0;
+  }
+
+  /* Context in the right pane is a single vertical reading order. */
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack,
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack .systemStripV2{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:10px;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack .overviewItem,
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack .overviewAction{
+    width:100%;
+    box-sizing:border-box;
+  }
+}

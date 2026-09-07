@@ -1,7 +1,13 @@
 (() => {
   document.documentElement.dataset.executionTarget = "browser-agent";
 
-  const assetVersion = new URL(document.currentScript?.src || location.href, location.href).searchParams.get("v") || "dev";
+  const scriptUrl = new URL(document.currentScript?.src || location.href, location.href);
+  const releaseMeta = document.querySelector('meta[name="webai-release"]');
+  const queryVersion = scriptUrl.searchParams.get("v");
+  const declaredRelease = releaseMeta?.content;
+  const assetVersion = declaredRelease && declaredRelease !== "dev"
+    ? declaredRelease
+    : queryVersion || declaredRelease || "dev";
 
   const style = document.createElement("link");
   style.rel = "stylesheet";

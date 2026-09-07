@@ -89,10 +89,10 @@ check("composer input is multiline and has an adjacent send/run control", id("ta
 
 check("right workspace region has a tablist", workspace && hasDescendant(workspace, (node) => attr(node, "role") === "tablist"));
 const tablist = workspace && descendants(workspace, (node) => attr(node, "role") === "tablist")[0];
-check("workspace exposes Plan, Preview, Diff, and Tests tabs", tablist && ["plan", "preview", "diff", "tests"].every((value) => descendants(tablist, (node) => node.tag === "button" && attr(node, "data-tab") === value).length === 1));
+check("workspace exposes Files, Preview, Diff, and Tests tabs", tablist && ["files", "preview", "diff", "tests"].every((value) => descendants(tablist, (node) => node.tag === "button" && attr(node, "data-tab") === value).length === 1));
 const filesTab = tablist && descendants(tablist, (node) => node.tag === "button" && hasText(node, "Files"))[0];
 check("Files tab uses an unambiguous files destination", filesTab && (attr(filesTab, "data-tab") === "files" || attr(filesTab, "data-workspace-tab") === "files"), filesTab ? `data-tab=${attr(filesTab, "data-tab")} data-workspace-tab=${attr(filesTab, "data-workspace-tab")}` : "Files tab missing");
-check("workspace tabs have matching panel structure", workspace && ["plan", "preview", "diff", "tests"].every((tab) => id(`tab-${tab}`) && id(`tab-${tab}`).parent === workspace.children.find((node) => node.type === "element" && attr(node, "class").includes("workspaceGrid"))?.children.find((node) => node.type === "element" && attr(node, "class").includes("tabStage"))));
+check("workspace keeps matching Preview, Diff, and Tests panels", workspace && ["preview", "diff", "tests"].every((tab) => id(`tab-${tab}`) && id(`tab-${tab}`).parent === workspace.children.find((node) => node.type === "element" && attr(node, "class").includes("workspaceGrid"))?.children.find((node) => node.type === "element" && attr(node, "class").includes("tabStage"))));
 check("workspace includes file tree and editor hooks", workspace && id("workspaceTree")?.tag === "div" && id("workspaceEditor")?.tag === "div" && id("workspaceEditorInput")?.tag === "textarea");
 
 check("mobile navigation is a semantic nav with a More hook", mobileNav?.tag === "nav" && attr(mobileNav, "aria-label") && id("mobileMoreBtn")?.parent === mobileNav);
@@ -108,6 +108,31 @@ check("center pane creates an Agent answer surface", /answerSurface\.id\s*=\s*["
 check("composer is placed after the chat answer surface", /conversation\.append\(conversationHeader,\s*answerSurface\);[\s\S]{0,180}conversation\.appendChild\(composer\.closest/.test(uiSource));
 check("task context moves into the right workspace before evidence", /const contextStack\s*=\s*el\(["']section["'],\s*["']workspaceContextStack["']\)[\s\S]{0,650}workspacePane\.appendChild\(contextStack\)/.test(uiSource));
 
+// The center pane is the product's answer surface. These checks intentionally
+// reject the old layout where the right workspace owns the Plan answer and the
+// center merely mirrors it. The composer must remain a compact bottom dock.
+check(
+  "center answer is rendered before the bottom composer",
+  /conversation\.append\(conversationHeader,\s*answerSurface\);\s*if\s*\(composer\)\s*conversation\.appendChild\(composer\.closest\(["']\.composerDock["']\)\s*\|\|\s*composer\)/.test(uiSource),
+);
+check(
+  "compact composer keeps the center input short",
+  /conversationPane[^\{]*>[\s\S]{0,420}composerDock[^\{]*>[\s\S]{0,520}#taskInput\s*\{[^}]*min-height\s*:\s*(?:5[0-9]|6[0-4])px/i.test(uiCss),
+);
+check(
+  "center answer does not depend on the right plan box",
+  !/read\(["']#planBox["']\)/.test(uiSource),
+);
+check(
+  "actual Plan panel moves from the workspace into the center answer surface",
+  /const planPanel\s*=\s*\$\(["']#tab-plan["']\);[\s\S]{0,420}answerSurface\.appendChild\(planPanel\);/.test(uiSource),
+);
+check(
+  "Files is a real workspace destination instead of a Plan alias",
+  filesTab && attr(filesTab, "data-tab") === "files",
+  filesTab ? `data-tab=${attr(filesTab, "data-tab")}` : "Files tab missing",
+);
+
 // The shell must remain horizontal on desktop. A viewport below this contract's
 // tablet breakpoint intentionally becomes a single active pane, but the desktop
 // rule must explicitly provide left rail + center chat + right workspace tracks.
@@ -120,24 +145,29 @@ check(
   /html\[data-shell="three-pane"\]\s+\.appShell[\s\S]{0,240}?grid-template-columns\s*:\s*var\(--shell-left\)\s+minmax\(360px,\s*1fr\)\s+var\(--shell-right\)/i.test(html),
 );
 
-// The outer shell is intentionally horizontal. Content-level grids inside a
-// pane must stack vertically; otherwise a second left/right split appears
-// inside the center chat or right workspace (the screenshot regression).
-const nestedDesktopSplits = [
-  ["center hero", "mainHeroV2"],
-  ["center task/activity cards", "taskGrid"],
-  ["right workspace stage and inspector", "workspaceGrid"],
-  ["right file tree and editor", "fileWorkspaceGrid"],
-];
-const desktopCss = uiCss.slice(uiCss.lastIndexOf("@media(min-width:901px)"));
-for (const [label, selector] of nestedDesktopSplits) {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const hasDesktopStack = new RegExp(
-    `\\.${escaped}[^\\{]*\\{[^}]*?(?:grid-template-columns\\s*:\\s*(?:1fr\\b|minmax\\(\\s*0\\s*,\\s*1fr\\s*\\))|flex-direction\\s*:\\s*column\\b)`,
-    "i",
-  ).test(desktopCss);
-  check(`desktop nested split stacks vertically: ${label}`, hasDesktopStack, `.${selector}`);
-}
+// Plan now belongs to the central answer stream.  Assert the runtime move and
+// the layout hooks that keep the active center/right regions vertically ordered.
+check(
+  "center Plan panel is marked before moving into the answer surface",
+  /planPanel\.classList\.add\(["']centerPlanPanel["']\)[\s\S]{0,240}answerSurface\.appendChild\(planPanel\)/.test(uiSource),
+);
+check(
+  "center answer surface stacks its answer and Plan vertically",
+  /#chatAnswerSurface\s*\{[^}]*display\s*:\s*flex[^}]*flex-direction\s*:\s*column/i.test(uiCss),
+);
+check(
+  "composer dock follows the center answer surface as a compact bottom control",
+  /conversation\.append\(conversationHeader,\s*answerSurface\);[\s\S]{0,180}conversation\.appendChild\(composer\.closest\(["']\.composerDock["']\)\s*\|\|\s*composer\)/.test(uiSource)
+    && /\.conversationPane\s*>\s*\.composerDock\s*>\s*\.newTaskCard\s*\{[^}]*padding\s*:/i.test(uiCss),
+);
+check(
+  "right task context stack is vertical",
+  /\.workspaceContextStack[^\{]*\{[^}]*display\s*:\s*flex[^}]*flex-direction\s*:\s*column/i.test(uiCss),
+);
+check(
+  "right workspace pane is a vertical reading stack",
+  /\.(?:workspacePane|workspacePanel|workspaceShell)[^\{]*\{[^}]*display\s*:\s*flex[^}]*flex-direction\s*:\s*column/i.test(uiCss),
+);
 
 const duplicateIds = [...new Set(all.map((node) => attr(node, "id")).filter(Boolean))].filter((value) => all.filter((node) => attr(node, "id") === value).length > 1);
 check("DOM ids are unique for stable JavaScript hooks", duplicateIds.length === 0, duplicateIds.join(", "));
