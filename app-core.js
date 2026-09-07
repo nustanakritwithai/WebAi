@@ -1228,12 +1228,36 @@ async function persistBrowserTaskState(workspace, task) {
   saveBrowserAgentTask();
 }
 
+function readbackEvidenceForRecord(record, expectedPath) {
+  const path = typeof record?.path === "string" ? record.path : null;
+  const contentPresent = typeof record?.content === "string";
+  const revision = Number(record?.version);
+  const hash = typeof record?.hash === "string" ? record.hash.toLowerCase() : null;
+  const metadataComplete = path === expectedPath
+    && contentPresent
+    && Number.isInteger(revision)
+    && revision > 0
+    && Boolean(hash && /^[a-f0-9]{64}$/.test(hash));
+  return {
+    ok: metadataComplete,
+    path,
+    revision: metadataComplete ? revision : (Number.isInteger(revision) && revision > 0 ? revision : 0),
+    version: metadataComplete ? revision : (Number.isInteger(revision) && revision > 0 ? revision : 0),
+    hash,
+    contentPresent,
+    contentBytes: contentPresent ? utf8Bytes(record.content) : null
+  };
+}
+
 function stepEvidenceForReadback(step, records, folder) {
   const files = Object.fromEntries(step.targetFiles.map((name) => {
-    const record = records?.[`${folder}/${name}`];
-    return [name, { ok: Boolean(record?.content), revision: Number(record?.version) || 0, hash: record?.hash || null }];
+    const expectedPath = `${folder}/${name}`;
+    const record = records?.[expectedPath] || Object.values(records || {}).find((candidate) => candidate?.path === expectedPath);
+    return [name, readbackEvidenceForRecord(record, expectedPath)];
   }));
-  return { readback: { ok: Object.values(files).every((item) => item.ok && item.revision > 0), files }, at: new Date().toISOString() };
+  const complete = Object.values(files).length === step.targetFiles.length
+    && Object.values(files).every((item) => item.ok);
+  return { readback: { ok: complete, files }, at: new Date().toISOString() };
 }
 
 function buildBrowserTaskHandoff(task = state.agentTask) {
@@ -1849,7 +1873,13 @@ async function executeBrowserPlanSteps(workspace, task, generationId) {
         } else writeFile.expectedRevision = 0;
         const revisions = await workspace.writeTaskFiles(task.id, [writeFile], { source: "browser-agent-step", taskId: task.id });
         const record = await readTaskFileIfPresent(workspace, task.id, file.name);
-        if (!record || record.content !== content || Number(record.version) !== Number(revisions[0]?.version)) throw new Error(`Workspace readback failed for ${file.name}.`);
+        if (!record
+          || record.path !== revisions[0]?.path
+          || record.content !== content
+          || Number(record.version) !== Number(revisions[0]?.version)
+          || record.hash !== revisions[0]?.hash) {
+          throw new Error(`Workspace readback failed for ${file.name}.`);
+        }
         task.appliedFiles = [...(Array.isArray(task.appliedFiles) ? task.appliedFiles.filter((item) => item.path !== revisions[0].path) : []), revisions[0]];
         task.artifactProgress.pending = task.artifactProgress.pending.filter((name) => (typeof name === "string" ? name : name.name) !== file.name);
         task.artifactProgress.saved = [...task.artifactProgress.saved.filter((name) => name !== file.name), file.name];
