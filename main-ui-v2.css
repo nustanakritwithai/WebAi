@@ -96,3 +96,97 @@ html[data-main-ui="v2"] .palette{background:#0c1a2d;border-color:rgba(105,140,18
 @media(max-width:1180px){html[data-main-ui="v2"] .mainHeroV2{grid-template-columns:1fr}html[data-main-ui="v2"] .welcome{min-height:auto}html[data-main-ui="v2"] .intelligenceDock{grid-template-columns:repeat(3,1fr);margin-top:12px}html[data-main-ui="v2"] .taskGrid{grid-template-columns:1fr}html[data-main-ui="v2"] .timelineCard{min-height:auto}}
 @media(max-width:880px){html[data-main-ui="v2"] .topbar{height:58px;min-height:58px;padding:0 12px}html[data-main-ui="v2"] .topbar .projectSwitcher,html[data-main-ui="v2"] .topbar .commandBtn,html[data-main-ui="v2"] .topbar .topnav{display:none}html[data-main-ui="v2"] .topbar .systemButton{margin-left:auto;min-width:0;padding:7px 9px}html[data-main-ui="v2"] .topbar .systemButton small,html[data-main-ui="v2"] .topbar .systemButton i{display:none}html[data-main-ui="v2"] .brand small{display:none}html[data-main-ui="v2"] .rail{display:none}html[data-main-ui="v2"] .main{width:100%;padding:12px 10px 94px}html[data-main-ui="v2"] .mainHeroV2{gap:10px}html[data-main-ui="v2"] .welcome,html[data-main-ui="v2"] .newTaskCard{border-radius:17px}html[data-main-ui="v2"] .welcome{padding:20px 17px}html[data-main-ui="v2"] .welcome h1{font-size:34px;max-width:500px;margin-top:8px}html[data-main-ui="v2"] .welcome>div>p,html[data-main-ui="v2"] .welcome>p{font-size:13px;margin-bottom:12px}html[data-main-ui="v2"] .modelMiniV2{display:grid!important;grid-template-columns:1fr auto;align-items:center;width:100%;min-width:0;padding:10px 11px!important}html[data-main-ui="v2"] .modelMiniV2 b{grid-row:2;grid-column:1}html[data-main-ui="v2"] .modelMiniV2 small{grid-row:1/3;grid-column:2;text-align:right}html[data-main-ui="v2"] .intelligenceDock{grid-template-columns:1fr;gap:6px;padding-top:10px}html[data-main-ui="v2"] .intelligenceTool{padding:8px 9px}html[data-main-ui="v2"] .intelligenceToolIcon{width:30px;height:30px}html[data-main-ui="v2"] .newTaskCard{padding:15px}html[data-main-ui="v2"] #taskInput{min-height:120px;padding:13px 14px;font-size:14px}html[data-main-ui="v2"] .contextRow{display:block}html[data-main-ui="v2"] #connectionHint{display:block;margin-top:7px}html[data-main-ui="v2"] .runBar{grid-template-columns:1fr auto;gap:8px;padding-top:12px}html[data-main-ui="v2"] .runHints{display:none}html[data-main-ui="v2"] .modeSelect{min-width:0}html[data-main-ui="v2"] .runTaskBtn{min-width:132px}html[data-main-ui="v2"] .systemStripV2{grid-template-columns:repeat(3,1fr);gap:5px;padding:5px;margin-bottom:16px;border-radius:13px;overflow:hidden}html[data-main-ui="v2"] .systemStripV2 .overviewItem{min-width:0;padding:8px 7px}html[data-main-ui="v2"] .systemStripV2 .overviewItem div{min-width:0}html[data-main-ui="v2"] .systemStripV2 .overviewItem b{font-size:9px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}html[data-main-ui="v2"] .systemStripV2 .overviewAction{grid-column:1/-1;width:100%;min-width:0;min-height:36px}html[data-main-ui="v2"] .sectionHead h2{font-size:16px}html[data-main-ui="v2"] .taskSummary,html[data-main-ui="v2"] .timelineCard{border-radius:15px;padding:14px}html[data-main-ui="v2"] .progressSteps{overflow-x:auto;justify-content:flex-start;padding-bottom:4px}html[data-main-ui="v2"] .progressStep{min-width:122px;flex:0 0 auto}html[data-main-ui="v2"] .taskMeta{grid-template-columns:1fr 1fr;gap:10px}html[data-main-ui="v2"] .agentActions{display:block;padding:12px}html[data-main-ui="v2"] .agentActionButtons{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}html[data-main-ui="v2"] .agentActionButtons button:first-child{grid-column:1/-1}html[data-main-ui="v2"] .workspaceGrid{grid-template-columns:1fr;border-radius:15px}html[data-main-ui="v2"] .inspectorV2{border-left:0;border-top:1px solid rgba(92,126,170,.15)}html[data-main-ui="v2"] .workspaceTabs{overflow:auto;max-width:100%}html[data-main-ui="v2"] .mobileNav{background:rgba(6,14,25,.94);border-top:1px solid rgba(104,140,188,.18);backdrop-filter:blur(18px);box-shadow:0 -10px 34px rgba(0,0,0,.18)}html[data-main-ui="v2"] .mobileNav a,html[data-main-ui="v2"] .mobileNav button{color:#8499b5}html[data-main-ui="v2"] .mobileNav .active{color:#ddebff}html[data-main-ui="v2"] .mobileRun{box-shadow:0 9px 25px rgba(80,112,235,.28)}}
 @media(max-width:520px){html[data-main-ui="v2"] .welcome h1{font-size:30px}html[data-main-ui="v2"] .quickPrompts{display:grid;grid-template-columns:1fr 1fr;width:100%}html[data-main-ui="v2"] .quickPrompts .promptChip:first-child{grid-column:1/-1}html[data-main-ui="v2"] .promptChip{width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}html[data-main-ui="v2"] .runBar{grid-template-columns:1fr}html[data-main-ui="v2"] .runTaskBtn{width:100%;min-width:0}html[data-main-ui="v2"] .modeSelect{width:100%}html[data-main-ui="v2"] .agentActionButtons{grid-template-columns:1fr}html[data-main-ui="v2"] .agentActionButtons button:first-child{grid-column:auto}}
+
+/* --------------------------------------------------------------------------
+   App shell / responsive pass
+   These selectors intentionally support both the current markup and the
+   conversation/workspace hooks used by the app shell integration.
+   -------------------------------------------------------------------------- */
+html[data-main-ui="v2"]{background:var(--v2-bg);overflow-x:hidden}
+html[data-main-ui="v2"] body{min-width:0;min-height:100dvh;overflow-x:hidden}
+html[data-main-ui="v2"] button,html[data-main-ui="v2"] a,html[data-main-ui="v2"] input,html[data-main-ui="v2"] select,html[data-main-ui="v2"] textarea{font:inherit}
+html[data-main-ui="v2"] button,html[data-main-ui="v2"] a[role="button"],html[data-main-ui="v2"] .tabBtn,html[data-main-ui="v2"] .railItem{min-height:44px}
+html[data-main-ui="v2"] :where(button,a,input,select,textarea,[tabindex]):focus-visible{outline:3px solid color-mix(in srgb,var(--v2-accent) 78%,white);outline-offset:2px}
+html[data-main-ui="v2"] :where(button,a){-webkit-tap-highlight-color:rgba(106,168,255,.18)}
+
+html[data-main-ui="v2"] .appShell{display:grid;grid-template-columns:240px minmax(360px,45fr) minmax(400px,55fr);height:calc(100dvh - 64px);min-height:0;overflow:hidden;padding:0}
+html[data-main-ui="v2"] .rail{box-sizing:border-box;width:auto;min-width:0;height:100%;overflow-y:auto;overflow-x:hidden;padding:18px 12px 22px;scrollbar-gutter:stable;background:linear-gradient(180deg,rgba(9,19,33,.92),rgba(6,14,25,.86));}
+html[data-main-ui="v2"] .railGroup{min-width:0}
+html[data-main-ui="v2"] .railItem{width:100%;box-sizing:border-box}
+html[data-main-ui="v2"] .main{box-sizing:border-box;width:auto;min-width:0;height:100%;min-height:0;overflow:hidden;padding:0;background:rgba(8,18,32,.5)}
+html[data-main-ui="v2"] .mainHeroV2,html[data-main-ui="v2"] .overviewBar,html[data-main-ui="v2"] .systemStripV2{max-width:none}
+
+/* Integration aliases: conversation/chat is the middle pane and workspace is
+   the right pane.  The aliases keep pane sizing stable as hooks evolve. */
+html[data-main-ui="v2"] :where(.conversationPane,.chatPane,.conversation,.chatPanel,.mainChat){display:flex;flex-direction:column;min-width:0;min-height:0;height:100%;overflow:hidden;border-right:1px solid var(--v2-line-soft);background:var(--v2-panel)}
+html[data-main-ui="v2"] :where(.workspacePane,.workspacePanel,.workspaceShell){display:flex;flex-direction:column;min-width:0;min-height:0;height:100%;overflow:hidden;background:var(--v2-panel-soft)}
+html[data-main-ui="v2"] :where(.conversationHeader,.chatHeader,.workspaceHeader,.paneHeader){flex:0 0 auto;min-height:60px;padding:12px 18px;box-sizing:border-box;border-bottom:1px solid var(--v2-line-soft);background:rgba(13,24,40,.9)}
+html[data-main-ui="v2"] :where(.conversationBody,.chatBody,.messageList,.conversationMessages,.workspaceBody,.workspaceContent,.paneContent){min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+html[data-main-ui="v2"] :where(.conversationBody,.chatBody,.messageList,.conversationMessages){flex:1 1 auto;padding:24px clamp(16px,3vw,36px)}
+html[data-main-ui="v2"] :where(.workspaceBody,.workspaceContent){flex:1 1 auto;padding:16px}
+html[data-main-ui="v2"] :where(.message,.chatMessage,.userMessage,.assistantMessage,.agentMessage){max-width:760px;margin:0 auto 16px;overflow-wrap:anywhere}
+html[data-main-ui="v2"] :where(.composer,.chatComposer,.conversationComposer){position:relative;z-index:2;flex:0 0 auto;padding:12px 16px max(12px,env(safe-area-inset-bottom));border-top:1px solid var(--v2-line-soft);background:rgba(13,24,40,.96)}
+html[data-main-ui="v2"] :where(.composer textarea,.chatComposer textarea,.conversationComposer textarea){width:100%;min-height:52px;max-height:180px;box-sizing:border-box;resize:vertical;color:var(--v2-text);background:#081424;border:1px solid var(--v2-line);border-radius:13px;padding:12px 14px;line-height:1.45}
+html[data-main-ui="v2"] :where(.composerActions,.chatComposerActions,.composerFooter){display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:8px}
+html[data-main-ui="v2"] :where(.composer button,.chatComposer button,.conversationComposer button){min-width:44px;min-height:44px}
+
+html[data-main-ui="v2"] .workspaceSection{box-sizing:border-box;display:flex;flex-direction:column;min-width:0;min-height:0;height:100%;margin:0;padding:0;overflow:hidden}
+html[data-main-ui="v2"] .workspaceSection>.sectionHead{flex:0 0 auto;padding:12px 16px;margin:0;border-bottom:1px solid var(--v2-line-soft)}
+html[data-main-ui="v2"] .workspaceGrid{flex:1 1 auto;min-height:0;min-width:0;width:100%;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) minmax(210px,270px);border:0;border-radius:0;overflow:hidden}
+html[data-main-ui="v2"] .tabStage,html[data-main-ui="v2"] .inspector,html[data-main-ui="v2"] .fileTreePane,html[data-main-ui="v2"] .fileEditorPane{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain}
+html[data-main-ui="v2"] .tabStage{padding:16px}
+html[data-main-ui="v2"] .workspaceTabs{max-width:100%;overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
+html[data-main-ui="v2"] .tabBtn,html[data-main-ui="v2"] .deviceSwitch button{flex:0 0 auto;padding:8px 12px}
+html[data-main-ui="v2"] :where(.workspaceGrid pre,.workspaceGrid code,.workspaceEditor){max-width:100%;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Desktop-only collapse/resize affordances. A handle remains keyboard-visible
+   when the integration exposes one; CSS never makes it smaller than a touch
+   target. */
+@media(min-width:1200px){
+  html[data-main-ui="v2"] :where(.resizeHandle,.paneResizeHandle){width:8px;min-width:8px;cursor:col-resize;background:transparent}
+  html[data-main-ui="v2"] :where(.resizeHandle,.paneResizeHandle):hover,html[data-main-ui="v2"] :where(.resizeHandle,.paneResizeHandle):focus-visible{background:rgba(106,168,255,.28)}
+  html[data-main-ui="v2"] :where(.railCollapsed) .appShell{grid-template-columns:64px minmax(360px,45fr) minmax(400px,55fr)}
+  html[data-main-ui="v2"] :where(.railCollapsed) .railItem b,html[data-main-ui="v2"] :where(.railCollapsed) .railItem em,html[data-main-ui="v2"] :where(.railCollapsed) .railTitle{display:none}
+  html[data-main-ui="v2"] :where(.workspaceCollapsed) .appShell{grid-template-columns:240px minmax(360px,1fr) 0}
+  html[data-main-ui="v2"] :where(.workspaceCollapsed) :where(.workspacePane,.workspacePanel,.workspaceShell,.workspaceSection){display:none}
+}
+
+/* Tablet: retain split panes where there is room; otherwise let the app's
+   Chat/Workspace toggle occupy the content area and use the rail as a drawer. */
+@media(min-width:768px) and (max-width:1199px){
+  html[data-main-ui="v2"] .appShell{grid-template-columns:minmax(0,1fr);height:calc(100dvh - 58px)}
+  html[data-main-ui="v2"] .rail{position:fixed;z-index:20;inset:58px auto 0 0;width:240px;transform:translateX(-102%);transition:transform .2s ease;box-shadow:20px 0 40px rgba(0,0,0,.3)}
+  html[data-main-ui="v2"] :where(.drawerOpen) .rail,html[data-main-ui="v2"] .rail.is-open{transform:translateX(0)}
+  html[data-main-ui="v2"] :where(.drawerBackdrop,.drawerOverlay){position:fixed;z-index:19;inset:58px 0 0;background:rgba(2,7,14,.58);backdrop-filter:blur(2px)}
+  html[data-main-ui="v2"] .main{height:100%;overflow:auto}
+  html[data-main-ui="v2"] :where(.conversationPane,.chatPane,.conversation,.chatPanel,.workspacePane,.workspacePanel,.workspaceShell){height:100%;}
+  html[data-main-ui="v2"] .workspaceGrid{grid-template-columns:minmax(0,1fr) minmax(190px,230px)}
+}
+
+@media(max-width:767px){
+  html[data-main-ui="v2"]{scroll-behavior:auto}
+  html[data-main-ui="v2"] body{height:100dvh}
+  html[data-main-ui="v2"] .topbar{min-height:56px;height:56px;padding-inline:12px}
+  html[data-main-ui="v2"] .appShell{display:block;height:calc(100dvh - 56px);min-height:0}
+  html[data-main-ui="v2"] .rail{position:fixed;z-index:30;inset:56px auto 0 0;width:min(86vw,300px);height:auto;transform:translateX(-102%);transition:transform .2s ease;box-shadow:20px 0 40px rgba(0,0,0,.32)}
+  html[data-main-ui="v2"] :where(.drawerOpen) .rail,html[data-main-ui="v2"] .rail.is-open{transform:translateX(0)}
+  html[data-main-ui="v2"] :where(.drawerBackdrop,.drawerOverlay){position:fixed;z-index:29;inset:56px 0 0;background:rgba(2,7,14,.62)}
+  html[data-main-ui="v2"] .main{height:100%;overflow:hidden}
+  html[data-main-ui="v2"] :where(.conversationPane,.chatPane,.conversation,.chatPanel,.mainChat,.workspacePane,.workspacePanel,.workspaceShell){display:none;height:100%;border:0}
+  html[data-main-ui="v2"] :where(.mobileChatActive,.showChat) :where(.conversationPane,.chatPane,.conversation,.chatPanel,.mainChat),html[data-main-ui="v2"] :where(.mobileWorkspaceActive,.showWorkspace) :where(.workspacePane,.workspacePanel,.workspaceShell){display:flex}
+  html[data-main-ui="v2"] .workspaceSection{height:100%}
+  html[data-main-ui="v2"] .workspaceGrid{display:block;height:100%;overflow:auto}
+  html[data-main-ui="v2"] .inspector{border:0;border-top:1px solid var(--v2-line-soft)}
+  html[data-main-ui="v2"] :where(.mobileViewToggle,.paneToggle,.chatWorkspaceToggle){display:flex;gap:4px;min-height:44px;padding:3px;border:1px solid var(--v2-line);border-radius:11px;background:#091526}
+  html[data-main-ui="v2"] :where(.mobileViewToggle button,.paneToggle button,.chatWorkspaceToggle button){min-width:44px;min-height:38px;padding-inline:12px}
+  html[data-main-ui="v2"] :where(.conversationBody,.chatBody,.messageList,.conversationMessages){padding:16px 12px}
+  html[data-main-ui="v2"] :where(.workspaceBody,.workspaceContent),html[data-main-ui="v2"] .tabStage{padding:12px}
+  html[data-main-ui="v2"] :where(.composer,.chatComposer,.conversationComposer){padding-inline:10px}
+  html[data-main-ui="v2"] :where(.modal,.drawer,.palette){max-height:100dvh;overflow-y:auto;overscroll-behavior:contain}
+  html[data-main-ui="v2"] .fileWorkspaceGrid{display:flex;flex-direction:column;min-height:0}
+  html[data-main-ui="v2"] .fileTreePane,html[data-main-ui="v2"] .fileEditorPane{max-height:none;min-height:240px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  html[data-main-ui="v2"],html[data-main-ui="v2"] *{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}

@@ -1,0 +1,112 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const html = await readFile(resolve(root, "index.html"), "utf8");
+
+// This deliberately uses the HTML structure instead of looking for CSS class text.
+// It is small, dependency-free, and sufficient for the stable shell contract.
+function parseHtml(source) {
+  const document = { type: "root", children: [], parent: null };
+  const stack = [document];
+  const tokens = source.match(/<!--[\s\S]*?-->|<![^>]*>|<[^>]+>/g) || [];
+  let cursor = 0;
+
+  for (const token of tokens) {
+    const index = source.indexOf(token, cursor);
+    const text = source.slice(cursor, index);
+    if (text.trim()) stack.at(-1).children.push({ type: "text", value: text, parent: stack.at(-1) });
+    cursor = index + token.length;
+    if (token.startsWith("<!--") || token.startsWith("<!")) continue;
+    if (token.startsWith("</")) {
+      if (stack.length > 1) stack.pop();
+      continue;
+    }
+
+    const match = token.match(/^<([a-z][\w:-]*)([\s\S]*?)(\/?)>$/i);
+    if (!match) continue;
+    const [, tag, rawAttributes, selfClosing] = match;
+    const attrs = {};
+    for (const attribute of rawAttributes.matchAll(/([:\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g)) {
+      attrs[attribute[1]] = attribute[2] ?? attribute[3] ?? attribute[4] ?? "";
+    }
+    const node = { type: "element", tag: tag.toLowerCase(), attrs, children: [], parent: stack.at(-1) };
+    stack.at(-1).children.push(node);
+    if (!selfClosing && !["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"].includes(node.tag)) {
+      stack.push(node);
+    }
+  }
+  return document;
+}
+
+const document = parseHtml(html);
+const descendants = (node, predicate) => {
+  const found = [];
+  for (const child of node.children) {
+    if (child.type === "element") {
+      if (!predicate || predicate(child)) found.push(child);
+      found.push(...descendants(child, predicate));
+    }
+  }
+  return found;
+};
+const all = descendants(document);
+const directChildren = (node, predicate) => node.children.filter((child) => child.type === "element" && predicate(child));
+const attr = (node, name) => node?.attrs?.[name] ?? "";
+const id = (value) => all.find((node) => attr(node, "id") === value);
+const className = (value) => all.find((node) => attr(node, "class").split(/\s+/).includes(value));
+const hasDescendant = (node, predicate) => descendants(node, predicate).length > 0;
+const textContent = (node) => node ? node.children.map((child) => child.type === "element" ? textContent(child) : child.value || "").join(" ") : "";
+const hasText = (node, value) => textContent(node).includes(value);
+const checks = [];
+
+function check(name, condition, detail = "") {
+  checks.push({ name, condition: Boolean(condition), detail });
+}
+
+function requireIdList(name, values) {
+  check(name, values.every((value) => id(value)), values.filter((value) => !id(value)).join(", "));
+}
+
+const shell = id("home")?.parent;
+const rail = className("rail");
+const main = id("home");
+const currentTask = className("currentTask");
+const workspace = id("workspace");
+const mobileNav = className("mobileNav");
+const drawer = id("connectionDrawer");
+
+check("app shell has a semantic left rail and main region", shell?.tag === "div" && directChildren(shell, (node) => node === rail).length === 1 && directChildren(shell, (node) => node === main).length === 1);
+check("left rail exposes the core navigation destinations", rail && ["Home", "Tasks", "Files", "Preview"].every((label) => descendants(rail, (node) => ["a", "button"].includes(node.tag) && hasText(node, label))));
+check("left rail keeps settings and plan entry points", rail && id("settingsBtn")?.parent === rail && hasDescendant(rail, (node) => node.tag === "a" && hasText(node, "Plan")));
+
+check("central work area owns task input, mode, run action, and timeline", main && ["taskInput", "taskMode", "runTaskBtn", "timeline"].every((value) => hasDescendant(main, (node) => node === id(value))));
+check("central work area has a persistent current-task conversation/activity surface", main && currentTask?.parent === main && hasDescendant(currentTask, (node) => node === id("timeline")));
+check("composer input is multiline and has an adjacent send/run control", id("taskInput")?.tag === "textarea" && id("runTaskBtn")?.tag === "button");
+
+check("right workspace region has a tablist", workspace && hasDescendant(workspace, (node) => attr(node, "role") === "tablist"));
+const tablist = workspace && descendants(workspace, (node) => attr(node, "role") === "tablist")[0];
+check("workspace exposes Plan, Preview, Diff, and Tests tabs", tablist && ["plan", "preview", "diff", "tests"].every((value) => descendants(tablist, (node) => node.tag === "button" && attr(node, "data-tab") === value).length === 1));
+check("workspace tabs have matching panel structure", workspace && ["plan", "preview", "diff", "tests"].every((tab) => id(`tab-${tab}`) && id(`tab-${tab}`).parent === workspace.children.find((node) => node.type === "element" && attr(node, "class").includes("workspaceGrid"))?.children.find((node) => node.type === "element" && attr(node, "class").includes("tabStage"))));
+check("workspace includes file tree and editor hooks", workspace && id("workspaceTree")?.tag === "div" && id("workspaceEditor")?.tag === "div" && id("workspaceEditorInput")?.tag === "textarea");
+
+check("mobile navigation is a semantic nav with a More hook", mobileNav?.tag === "nav" && attr(mobileNav, "aria-label") && id("mobileMoreBtn")?.parent === mobileNav);
+check("connection drawer has dialog semantics, label, and close hook", drawer?.tag === "div" && attr(drawer, "aria-hidden") === "true" && descendants(drawer, (node) => attr(node, "role") === "dialog" && attr(node, "aria-modal") === "true" && attr(node, "aria-labelledby") === "drawerTitle").length === 1 && hasDescendant(drawer, (node) => node === id("closeDrawer")));
+
+requireIdList("required supervised Agent controls remain present", ["approveExecutionBtn", "verifyTaskBtn", "agentActionHint", "agentError"]);
+check("required Agent controls remain actionable buttons", ["approveExecutionBtn", "verifyTaskBtn"].every((value) => id(value)?.tag === "button" && attr(id(value), "type") === "button"));
+requireIdList("task identity hooks remain present", ["currentTaskId", "currentTaskGoal", "uiCurrentTaskState", "uiCurrentTaskFolder"]);
+requireIdList("workspace identity and persistence hooks remain present", ["workspaceCurrentFolder", "workspaceStatus", "workspaceTree", "workspaceEditorPath", "workspaceEditorInput", "saveWorkspaceFile", "deleteWorkspaceItem"]);
+check("workspace scripts are loaded after the document structure", /<script[^>]+src=["']\.\/workspace\.js\?v=[^"']+["'][^>]*defer/i.test(html));
+
+const duplicateIds = [...new Set(all.map((node) => attr(node, "id")).filter(Boolean))].filter((value) => all.filter((node) => attr(node, "id") === value).length > 1);
+check("DOM ids are unique for stable JavaScript hooks", duplicateIds.length === 0, duplicateIds.join(", "));
+
+const failures = checks.filter((item) => !item.condition);
+for (const item of checks) console.log(`${item.condition ? "PASS" : "FAIL"} ${item.name}${item.detail && !item.condition ? ` — ${item.detail}` : ""}`);
+console.log(`\n${checks.length - failures.length}/${checks.length} UI-shell contract checks passed.`);
+if (failures.length) {
+  console.error("\nUI-shell contract failed. Fix the listed DOM contract gaps before relying on browser QA.");
+  process.exitCode = 1;
+}
