@@ -425,18 +425,69 @@
   function installTaskFlowControls() {
     const continueButton = $("#continueCurrentTaskBtn");
     const newTaskButton = $("#newTaskControl");
-    if (!continueButton || !newTaskButton || newTaskButton.dataset.uiBound === "true") return;
-    continueButton.addEventListener("click", () => typeof window.WebAiContinueTask === "function" ? window.WebAiContinueTask() : focusCurrentTask());
-    if (typeof window.WebAiNewTask !== "function") {
-      window.WebAiNewTask = () => {
-        const previousTaskId = $("#currentTaskId")?.textContent?.trim() || null;
-        document.dispatchEvent(new CustomEvent("webai:new-task", { detail: { previousTaskId, source: "main-ui-v2" } }));
-        focusCurrentTask();
-        syncTaskContext();
+    if (!continueButton && !newTaskButton) return;
+
+    if (continueButton && continueButton.dataset.uiBound !== "true") {
+      const feedback = el("small", "taskFlowFeedback");
+      feedback.id = "continueCurrentTaskFeedback";
+      feedback.setAttribute("role", "status");
+      feedback.setAttribute("aria-live", "polite");
+      feedback.hidden = true;
+      continueButton.insertAdjacentElement("afterend", feedback);
+
+      const setContinueFeedback = (message, tone = "status") => {
+        feedback.hidden = !message;
+        feedback.textContent = message;
+        feedback.dataset.tone = tone;
       };
+
+      const handleContinueTask = async () => {
+        if (continueButton.dataset.inFlight === "true") return;
+        continueButton.dataset.inFlight = "true";
+        const originalMarkup = continueButton.innerHTML;
+        continueButton.disabled = true;
+        continueButton.setAttribute("aria-busy", "true");
+        continueButton.replaceChildren(document.createTextNode("กำลังทำงานต่อ…"));
+        setContinueFeedback("กำลังส่งงานต่อให้ Agent…", "working");
+        try {
+          if (typeof window.WebAiContinueTask !== "function") {
+            focusCurrentTask();
+            throw new Error("Continue current task ยังไม่พร้อม กรุณาเริ่ม task ก่อน");
+          }
+          const result = await window.WebAiContinueTask();
+          if (result !== false) setContinueFeedback("ส่งงานต่อแล้ว", "success");
+        } catch (error) {
+          const message = error?.message || String(error || "ไม่ทราบสาเหตุ");
+          setContinueFeedback(`Continue current task ไม่สำเร็จ: ${message}`, "error");
+          const agentError = $("#agentError");
+          if (agentError) {
+            agentError.hidden = false;
+            agentError.textContent = `Continue current task ไม่สำเร็จ: ${message}`;
+          }
+        } finally {
+          continueButton.innerHTML = originalMarkup;
+          continueButton.disabled = false;
+          continueButton.removeAttribute("aria-busy");
+          delete continueButton.dataset.inFlight;
+        }
+      };
+
+      continueButton.addEventListener("click", handleContinueTask);
+      continueButton.dataset.uiBound = "true";
     }
-    newTaskButton.addEventListener("click", () => window.WebAiNewTask());
-    newTaskButton.dataset.uiBound = "true";
+
+    if (newTaskButton && newTaskButton.dataset.uiBound !== "true") {
+      if (typeof window.WebAiNewTask !== "function") {
+        window.WebAiNewTask = () => {
+          const previousTaskId = $("#currentTaskId")?.textContent?.trim() || null;
+          document.dispatchEvent(new CustomEvent("webai:new-task", { detail: { previousTaskId, source: "main-ui-v2" } }));
+          focusCurrentTask();
+          syncTaskContext();
+        };
+      }
+      newTaskButton.addEventListener("click", () => window.WebAiNewTask());
+      newTaskButton.dataset.uiBound = "true";
+    }
     ["#currentTaskId", "#taskStatus", "#workspaceCurrentFolder"].forEach((selector) => {
       const node = $(selector);
       if (node) new MutationObserver(syncTaskContext).observe(node, { childList: true, characterData: true, subtree: true });

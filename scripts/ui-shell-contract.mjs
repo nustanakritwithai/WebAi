@@ -104,6 +104,23 @@ check("connection drawer has dialog semantics, label, and close hook", drawer?.t
 
 requireIdList("required supervised Agent controls remain present", ["approveExecutionBtn", "verifyTaskBtn", "agentActionHint", "agentError"]);
 check("required Agent controls remain actionable buttons", ["approveExecutionBtn", "verifyTaskBtn"].every((value) => id(value)?.tag === "button" && attr(id(value), "type") === "button"));
+check("current-task Continue control remains a button", id("continueCurrentTaskBtn")?.tag === "button" && attr(id("continueCurrentTaskBtn"), "type") === "button");
+check(
+  "Continue binds independently after the V2 DOM move",
+  /const continueButton\s*=\s*\$\(["']#continueCurrentTaskBtn["']\)[\s\S]{0,260}if\s*\(continueButton\s*&&\s*continueButton\.dataset\.uiBound\s*!==\s*["']true["']\)/.test(uiSource),
+);
+check(
+  "Continue handler awaits and catches runtime failures",
+  /const handleContinueTask\s*=\s*async\s*\(\)[\s\S]{0,1200}await\s+window\.WebAiContinueTask\(\)[\s\S]{0,520}catch\s*\(error\)/.test(uiSource),
+);
+check(
+  "Continue exposes busy state and restores the button in finally",
+  /continueButton\.disabled\s*=\s*true[\s\S]{0,520}continueButton\.setAttribute\(["']aria-busy["'],\s*["']true["']\)[\s\S]{0,1800}finally\s*\{[\s\S]{0,360}continueButton\.disabled\s*=\s*false/.test(uiSource),
+);
+check(
+  "Continue prevents duplicate in-flight clicks",
+  /continueButton\.dataset\.inFlight\s*===\s*["']true["'][\s\S]{0,120}return;[\s\S]{0,120}continueButton\.dataset\.inFlight\s*=\s*["']true["']/.test(uiSource),
+);
 requireIdList("task identity hooks remain present", ["currentTaskId", "currentTaskGoal", "uiCurrentTaskState", "uiCurrentTaskFolder"]);
 requireIdList("workspace identity and persistence hooks remain present", ["workspaceCurrentFolder", "workspaceStatus", "workspaceTree", "workspaceEditorPath", "workspaceEditorInput", "saveWorkspaceFile", "deleteWorkspaceItem"]);
 check("workspace scripts are loaded after the document structure", /<script[^>]+src=["']\.\/workspace\.js\?v=[^"']+["'][^>]*defer/i.test(html));
