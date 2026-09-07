@@ -920,7 +920,7 @@ const UNSAFE_PREVIEW_PATTERNS = [
   [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/i, "network APIs are not allowed"],
   [/\bnavigator\.sendBeacon\s*\(/i, "beacon requests are not allowed"],
   [/(?:window\.)?open\s*\(/i, "popups are not allowed"],
-  [/<\s*(?:form|iframe|object|embed|base)\b/i, "forms, frames, and navigation elements are not allowed"],
+  [/<\s*(?:iframe|object|embed|base)\b/i, "frames and navigation elements are not allowed"],
   [/<\s*meta\b[^>]*http-equiv\s*=\s*["']?refresh/i, "document navigation is not allowed"],
   [/(?:^|[\s;(])(?:location(?:\.(?:assign|replace|href))?|history\.pushState)\s*[=(]/i, "navigation APIs are not allowed"],
   [/<\s*a\b[^>]*\bhref\s*=/i, "navigation links are not allowed"],
@@ -938,6 +938,8 @@ function validatePreviewCode(code, language) {
     if (pattern.test(code)) throw new Error(`Preview blocked: ${reason}.`);
   }
   if (language === "html") {
+    const formTags = code.match(/<\s*form\b[^>]*>/gi) || [];
+    if (formTags.some((tag) => /\b(?:action|formaction|method|target)\s*=/i.test(tag))) throw new Error("Preview blocked: forms cannot specify action, method, target, or formaction.");
     const scriptTags = code.match(/<\s*script\b[\s\S]*?<\/script>/gi) || [];
     if (scriptTags.length) {
       const invalidScript = scriptTags.find((tag) => {
@@ -1457,7 +1459,7 @@ function composeWorkspaceDocument(files, token) {
   const app = validatePreviewCode(files["app.js"], "javascript");
   const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; font-src data:; media-src data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; navigate-to 'none'; popup: 'none'; download: 'none';";
   const meta = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}">`;
-  const runtime = `<script>window.__webaiPreviewErrors=[];window.addEventListener('error',function(e){window.__webaiPreviewErrors.push(String(e.message||'runtime error'));window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:String(e.message||'runtime error')},'*');});window.addEventListener('unhandledrejection',function(e){var message=String(e.reason?.message||e.reason||'unhandled rejection');window.__webaiPreviewErrors.push(message);window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:message},'*');});window.addEventListener('load',function(){window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'ready'},'*');});</script>`;
+  const runtime = `<script>window.__webaiPreviewErrors=[];document.addEventListener('submit',function(e){e.preventDefault();},true);window.addEventListener('error',function(e){window.__webaiPreviewErrors.push(String(e.message||'runtime error'));window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:String(e.message||'runtime error')},'*');});window.addEventListener('unhandledrejection',function(e){var message=String(e.reason?.message||e.reason||'unhandled rejection');window.__webaiPreviewErrors.push(message);window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:message},'*');});window.addEventListener('load',function(){window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'ready'},'*');});</script>`;
   const style = `<style>${escapePreviewMarkup(css, "style")}</style>`;
   const script = `<script>${escapePreviewMarkup(app, "script")}</script>`;
   if (/<\s*html\b/i.test(normalizedIndex)) {

@@ -11,6 +11,7 @@ const [core, workspace, html, app, pages] = await Promise.all([
 const checks = [
   ["malformed generation is rejected", core.includes("Demo response has duplicate") && core.includes("code fences ครบ")],
   ["external URLs and network APIs are rejected", core.includes("UNSAFE_PREVIEW_PATTERNS") && /fetch\|XMLHttpRequest\|WebSocket/.test(core)],
+  ["local interactive forms work without navigation", core.includes("document.addEventListener('submit',function(e){e.preventDefault();},true)") && core.includes("forms cannot specify action, method, target, or formaction") && !core.includes("(?:form|iframe|object|embed|base)")],
   ["output size is bounded", core.includes("AGENT_FILE_LIMIT") && workspace.includes("MAX_FILE_BYTES")],
   ["generated files use revisioned IndexedDB records", workspace.includes('DB_VERSION = 2') && workspace.includes('REVISION_STORE_NAME') && workspace.includes('revisionsStore.put')],
   ["agent creates a deterministic task folder and plan artifact", core.includes("ensureTaskFolder") && core.includes('name: "PLAN.md"') && core.includes('name: "TASK.json"') && workspace.includes("/^BROWSER-[0-9]{8}$/")],
