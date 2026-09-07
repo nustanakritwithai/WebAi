@@ -95,15 +95,13 @@
     });
     if (contextStack.childElementCount) workspacePane.appendChild(contextStack);
     if (workspace) workspacePane.appendChild(workspace);
-    // Browser Workspace is the real Files tab content. Mount the existing
-    // tree/editor DOM inside the tab stage instead of leaving it as a sibling
-    // section below the workspace, where tab switching could expose an empty
-    // stage while the files lived in a different scroll container.
-    if (files && tabStage) {
+    // Browser Workspace is a sibling view of the evidence workspace. Keeping
+    // it outside the tab stage makes the Files/Preview boundary explicit:
+    // Preview owns only its toolbar, canvas, and iframe; Files owns the tree
+    // and editor without relying on nested tab-panel visibility rules.
+    if (files) {
       files.classList.add("workspaceFilesTabPanel");
       files.dataset.shellRegion = "files-tab";
-      tabStage.appendChild(files);
-    } else if (files) {
       workspacePane.appendChild(files);
     }
     if (lower) workspacePane.appendChild(lower);
@@ -273,19 +271,19 @@
     }
     const workspaceGrid = workspace?.querySelector(".workspaceGrid");
     const tabStage = workspaceGrid?.querySelector(".tabStage");
-    const nestedFiles = Boolean(files && tabStage && files.parentElement === tabStage);
     if (workspace) {
       workspace.hidden = false;
       workspace.setAttribute("aria-hidden", "false");
     }
     if (workspaceGrid) {
-      workspaceGrid.hidden = nestedFiles ? false : fileView;
-      workspaceGrid.setAttribute("aria-hidden", String(nestedFiles ? false : fileView));
+      workspaceGrid.hidden = fileView;
+      workspaceGrid.setAttribute("aria-hidden", String(fileView));
     }
-    if (nestedFiles && tabStage) {
+    if (tabStage) {
       tabStage.querySelectorAll(":scope > .tabPanel").forEach((panel) => {
-        panel.hidden = fileView;
-        panel.setAttribute("aria-hidden", String(fileView));
+        const isActivePanel = !fileView && panel.id === `tab-${view}`;
+        panel.hidden = !isActivePanel;
+        panel.setAttribute("aria-hidden", String(!isActivePanel));
       });
       const inspector = workspaceGrid?.querySelector(":scope > .inspector");
       if (inspector) {

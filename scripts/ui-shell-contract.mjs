@@ -99,8 +99,8 @@ check("file details editor has an explicit close control", id("closeWorkspaceEdi
 check("file details editor has dialog semantics", attr(id("workspaceEditorPath")?.parent?.parent?.parent, "role") === "dialog" && attr(id("workspaceEditorPath")?.parent?.parent?.parent, "aria-modal") === "true");
 check("file details editor supports overlay dismissal", /workspaceEditorOpen/.test(uiCss) && /Escape/.test(workspaceSource));
 check(
-  "Browser Workspace is mounted into the Files tab stage",
-  /files\s*&&\s*tabStage[\s\S]{0,260}tabStage\.appendChild\(files\)/.test(uiSource),
+  "Browser Workspace is mounted as a sibling Files view",
+  /files\)\s*\{[\s\S]{0,220}files\.classList\.add\("workspaceFilesTabPanel"\)[\s\S]{0,220}workspacePane\.appendChild\(files\)/.test(uiSource),
 );
 
 check("mobile navigation is a semantic nav with a More hook", mobileNav?.tag === "nav" && attr(mobileNav, "aria-label") && id("mobileMoreBtn")?.parent === mobileNav);
@@ -166,8 +166,8 @@ check(
   filesTab ? `data-tab=${attr(filesTab, "data-tab")}` : "Files tab missing",
 );
 check(
-  "Files view keeps its workspace grid mounted while showing the file panel",
-  /const nestedFiles\s*=\s*Boolean\([\s\S]{0,220}files\.parentElement\s*===\s*tabStage\)[\s\S]{0,420}workspaceGrid\.hidden\s*=\s*nestedFiles\s*\?\s*false\s*:\s*fileView/.test(uiSource),
+  "Files and Preview use mutually exclusive top-level views",
+  /workspaceGrid\.hidden\s*=\s*fileView/.test(uiSource) && /files\.hidden\s*=\s*!fileView/.test(uiSource),
 );
 
 // The shell must remain horizontal on desktop. A viewport below this contract's

@@ -1764,12 +1764,11 @@ function selectTab(name) {
   const workspaceGrid = workspace?.querySelector(".workspaceGrid");
   const fileWorkspace = document.querySelector("#fileWorkspace");
   const tabStage = workspaceGrid?.querySelector(".tabStage");
-  const nestedFiles = Boolean(fileWorkspace && tabStage && fileWorkspace.parentElement === tabStage);
   if (workspaceGrid) {
-    workspaceGrid.hidden = nestedFiles ? false : fileView;
-    workspaceGrid.setAttribute("aria-hidden", String(nestedFiles ? false : fileView));
+    workspaceGrid.hidden = fileView;
+    workspaceGrid.setAttribute("aria-hidden", String(fileView));
   }
-  if (nestedFiles && tabStage) {
+  if (tabStage) {
     tabStage.querySelectorAll(":scope > .tabPanel").forEach((panel) => {
       panel.hidden = fileView;
       panel.setAttribute("aria-hidden", String(fileView));

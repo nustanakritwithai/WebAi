@@ -1046,3 +1046,53 @@ html[data-main-ui="v2"][data-shell="three-pane"] #tab-preview .workspacePreviewF
   border-radius:inherit;
   background:#fff;
 }
+
+/* Files is a sibling workspace view, never content inside Preview. This
+   removes the nested-tab leakage and lets either view own the full right pane. */
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #workspace,
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #fileWorkspace{
+  order:2;
+  flex:1 1 auto;
+  min-height:0;
+  height:auto;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #fileWorkspace{
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  margin:0;
+  padding:0;
+}
+
+/* Component display rules must never override the state controlled by the
+   Files/Preview tab switcher. */
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #workspace[hidden],
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #fileWorkspace[hidden],
+html[data-main-ui="v2"][data-shell="three-pane"] #workspace .workspaceGrid[hidden]{
+  display:none !important;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #workspace .workspaceGrid{
+  height:100%;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #workspace .tabStage{
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  overflow:hidden;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #workspace .tabStage > .tabPanel.active{
+  display:flex;
+  flex:1 1 auto;
+  flex-direction:column;
+  min-height:0;
+  overflow:hidden;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] #tab-preview.active .previewCanvas{
+  flex:1 1 auto;
+  min-height:0;
+}
