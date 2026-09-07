@@ -117,6 +117,25 @@ check(
   /html\[data-shell="three-pane"\]\s+\.appShell[\s\S]{0,240}?grid-template-columns\s*:\s*var\(--shell-left\)\s+minmax\(360px,\s*1fr\)\s+var\(--shell-right\)/i.test(html),
 );
 
+// The outer shell is intentionally horizontal. Content-level grids inside a
+// pane must stack vertically; otherwise a second left/right split appears
+// inside the center chat or right workspace (the screenshot regression).
+const nestedDesktopSplits = [
+  ["center hero", "mainHeroV2"],
+  ["center task/activity cards", "taskGrid"],
+  ["right workspace stage and inspector", "workspaceGrid"],
+  ["right file tree and editor", "fileWorkspaceGrid"],
+];
+const desktopCss = uiCss.slice(uiCss.lastIndexOf("@media(min-width:901px)"));
+for (const [label, selector] of nestedDesktopSplits) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const hasDesktopStack = new RegExp(
+    `\\.${escaped}[^\\{]*\\{[^}]*?(?:grid-template-columns\\s*:\\s*(?:1fr\\b|minmax\\(\\s*0\\s*,\\s*1fr\\s*\\))|flex-direction\\s*:\\s*column\\b)`,
+    "i",
+  ).test(desktopCss);
+  check(`desktop nested split stacks vertically: ${label}`, hasDesktopStack, `.${selector}`);
+}
+
 const duplicateIds = [...new Set(all.map((node) => attr(node, "id")).filter(Boolean))].filter((value) => all.filter((node) => attr(node, "id") === value).length > 1);
 check("DOM ids are unique for stable JavaScript hooks", duplicateIds.length === 0, duplicateIds.join(", "));
 
