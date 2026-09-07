@@ -107,6 +107,50 @@
     inspector?.classList.add("inspectorV2");
   }
 
+  function syncTaskContext() {
+    const taskId = document.querySelector("#currentTaskId")?.textContent?.trim() || "NO TASK";
+    const status = document.querySelector("#taskStatus")?.textContent?.trim() || "Waiting";
+    const folderSource = document.querySelector("#workspaceCurrentFolder")?.textContent?.trim() || "Current task folder: —";
+    const state = document.querySelector("#uiCurrentTaskState");
+    const folder = document.querySelector("#uiCurrentTaskFolder");
+    const hasTask = taskId !== "NO TASK" && taskId !== "AGENT TASK";
+    if (state) state.textContent = hasTask ? `${taskId} · ${status}` : "No active task";
+    if (folder) folder.textContent = folderSource.split(" · ")[0];
+  }
+
+  function focusCurrentTask() {
+    document.querySelector("#tasks")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.querySelector("#taskInput")?.focus({ preventScroll: true });
+  }
+
+  function installTaskFlowControls() {
+    const continueButton = document.querySelector("#continueCurrentTaskBtn");
+    const newTaskButton = document.querySelector("#newTaskControl");
+    if (!continueButton || !newTaskButton || newTaskButton.dataset.uiBound === "true") return;
+
+    continueButton.addEventListener("click", focusCurrentTask);
+
+    if (typeof window.WebAiNewTask !== "function") {
+      window.WebAiNewTask = () => {
+        const previousTaskId = document.querySelector("#currentTaskId")?.textContent?.trim() || null;
+        document.dispatchEvent(new CustomEvent("webai:new-task", {
+          detail: { previousTaskId, source: "main-ui-v2" }
+        }));
+        focusCurrentTask();
+        syncTaskContext();
+      };
+    }
+
+    newTaskButton.addEventListener("click", () => window.WebAiNewTask());
+    newTaskButton.dataset.uiBound = "true";
+    ["#currentTaskId", "#taskStatus", "#workspaceCurrentFolder"].forEach((selector) => {
+      const node = document.querySelector(selector);
+      if (node) new MutationObserver(syncTaskContext).observe(node, { childList: true, characterData: true, subtree: true });
+    });
+    window.addEventListener("webai:workspace-ready", syncTaskContext, { once: true });
+    syncTaskContext();
+  }
+
   function init() {
     if (document.documentElement.dataset.mainUi === "v2") return;
     const main = document.querySelector(".main");
@@ -116,6 +160,7 @@
     buildHero(main);
     upgradeNavigation();
     addSectionLabels();
+    installTaskFlowControls();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });

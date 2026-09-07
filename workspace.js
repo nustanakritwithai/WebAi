@@ -7,6 +7,8 @@
   const REVISION_STORE_NAME = "revisions";
   const MAX_FILE_BYTES = 100_000;
   const MAX_FILES_PER_WRITE = 12;
+  const MAX_TASK_CONTEXT_FILES = 32;
+  const MAX_TASK_CONTEXT_BYTES = 300_000;
   const root = document.querySelector("#fileWorkspace");
   if (!root) return;
 
@@ -132,6 +134,10 @@
       request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error || new Error("Could not read the workspace."));
     });
+  }
+
+  async function getAllItemsFresh() {
+    return getAllItems();
   }
 
   function notify(change) {
@@ -306,6 +312,13 @@
     const source = typeof metadata.source === "string" ? metadata.source.slice(0, 40) : "browser-agent";
     const taskFolder = taskId ? taskFolderForId(taskId) : "";
     if (taskFolder && records.some((record) => !record.path.startsWith(`${taskFolder}/`))) throw new WorkspacePathError("Task artifacts must stay inside their task folder.");
+    if (taskId) {
+      const conflicting = records.find(({ path }) => {
+        const current = itemAt(path);
+        return current?.taskId && current.taskId !== taskId;
+      });
+      if (conflicting) throw new Error(`Workspace path belongs to another task: ${conflicting.path}`);
+    }
     const versions = records.map(({ path }) => (Number(itemAt(path)?.version) || 0) + 1);
     await new Promise((resolve, reject) => {
       const request = db.transaction([STORE_NAME, REVISION_STORE_NAME], "readwrite");
@@ -386,6 +399,29 @@
     }));
   }
 
+  async function readTaskContext(taskId) {
+    const folder = taskFolderForId(taskId);
+    if (!db) await ready;
+    const persistedItems = (await getAllItemsFresh())
+      .filter((item) => item.type === "file" && item.path.startsWith(`${folder}/`))
+      .sort((a, b) => a.path.localeCompare(b.path));
+    const files = [];
+    let totalBytes = 0;
+    for (const item of persistedItems) {
+      if (files.length >= MAX_TASK_CONTEXT_FILES) break;
+      const content = typeof item.content === "string" ? item.content : "";
+      const size = byteLength(content);
+      if (totalBytes + size > MAX_TASK_CONTEXT_BYTES) break;
+      files.push({
+        path: item.path.slice(folder.length + 1),
+        content,
+        version: Number(item.version) || 1
+      });
+      totalBytes += size;
+    }
+    return { folder, files };
+  }
+
   function setActiveTask(taskId) {
     try {
       activeTaskFolder = taskFolderForId(taskId);
@@ -445,6 +481,6 @@
   })();
   ready.catch(() => {});
 
-  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, listFiles, ensureTaskFolder, writeTaskFiles, readTaskFiles, listTaskFiles, taskFolderForId, setActiveTask, getActiveTaskFolder: () => activeTaskFolder, subscribe, maxFileBytes: MAX_FILE_BYTES };
+  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, listFiles, ensureTaskFolder, writeTaskFiles, readTaskFiles, listTaskFiles, readTaskContext, taskFolderForId, setActiveTask, getActiveTaskFolder: () => activeTaskFolder, subscribe, maxFileBytes: MAX_FILE_BYTES, maxTaskContextBytes: MAX_TASK_CONTEXT_BYTES, maxTaskContextFiles: MAX_TASK_CONTEXT_FILES };
   window.dispatchEvent(new CustomEvent("webai:workspace-ready"));
 })();

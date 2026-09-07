@@ -8,6 +8,13 @@
   <title>WebAi · AI Software Engineering Workspace</title>
   <link rel="stylesheet" href="./styles.css?v=dev" data-cache-bust="asset">
   <link rel="stylesheet" href="./semantic.css?v=dev" data-cache-bust="asset">
+  <style>
+    .taskFlowBar { display:flex; justify-content:space-between; gap:20px; align-items:center; margin:0 0 20px; padding:14px 16px; border:1px solid rgba(122,154,196,.2); border-radius:14px; background:rgba(8,20,38,.42); }
+    .taskFlowState { display:grid; gap:3px; min-width:220px; }
+    .taskFlowState small, .taskFlowBar p { color:var(--muted,#8fa3bd); font-size:.82rem; margin:0; }
+    .taskFlowBar p { max-width:520px; text-align:right; }
+    @media (max-width:760px) { .taskFlowBar { align-items:flex-start; flex-direction:column; } .taskFlowBar p { text-align:left; } }
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -139,8 +146,15 @@
         <div class="sectionHead">
           <div><span class="sectionKicker">CURRENT TASK</span><h2>งานที่กำลังทำ</h2></div>
           <div class="sectionActions">
+            <button id="continueCurrentTaskBtn" class="ghostBtn" type="button">Continue current task <span>→</span></button>
+            <button id="newTaskControl" class="primary" type="button">＋ New Task</button>
             <button id="clearTaskBtn" class="ghostBtn" type="button">Clear</button>
           </div>
+        </div>
+
+        <div class="taskFlowBar" aria-label="Task context">
+          <div class="taskFlowState"><span class="sectionKicker">TASK CONTEXT</span><b id="uiCurrentTaskState">No active task</b><small id="uiCurrentTaskFolder">Current task folder: —</small></div>
+          <p>Continue keeps the current task context. New Task starts a fresh task context and leaves browser workspace files untouched.</p>
         </div>
 
         <div class="taskGrid">
