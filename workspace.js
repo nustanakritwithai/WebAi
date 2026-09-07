@@ -76,6 +76,45 @@
     return new TextEncoder().encode(value).byteLength;
   }
 
+  async function contentHash(value) {
+    const bytes = new TextEncoder().encode(value);
+    if (!globalThis.crypto?.subtle) throw new Error("Workspace hashing is unavailable in this browser.");
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  function revisionConflict(path, expected, actual) {
+    const error = new Error(`Workspace file changed since it was read: ${path}`);
+    error.name = "WorkspaceRevisionConflict";
+    error.code = "STALE_WORKSPACE_WRITE";
+    error.path = path;
+    error.expectedRevision = expected?.revision ?? null;
+    error.expectedHash = expected?.hash ?? null;
+    error.actualRevision = actual?.version ?? 0;
+    error.actualHash = actual?.hash ?? null;
+    error.status = 409;
+    return error;
+  }
+
+  function expectedFor(path, file, metadata) {
+    const revisions = metadata?.expectedRevisions || {};
+    const hashes = metadata?.expectedHashes || {};
+    const revision = file?.expectedRevision ?? revisions[path];
+    const hash = file?.expectedHash ?? hashes[path];
+    return {
+      revision: revision === undefined || revision === null ? null : Number(revision),
+      hash: typeof hash === "string" ? hash : null
+    };
+  }
+
+  function assertExpected(path, expected, current) {
+    if (expected.revision === null && expected.hash === null) return;
+    const actualRevision = Number(current?.version) || 0;
+    const revisionMatches = expected.revision === null || expected.revision === actualRevision;
+    const hashMatches = expected.hash === null || expected.hash === current?.hash;
+    if (!revisionMatches || !hashMatches) throw revisionConflict(path, expected, { version: actualRevision, hash: current?.hash || null });
+  }
+
   function parentPath(path) {
     const index = path.lastIndexOf("/");
     return index < 0 ? "" : path.slice(0, index);
@@ -270,10 +309,13 @@
     if (!item || item.type !== "file") return;
     const content = els.input.value;
     if (byteLength(content) > MAX_FILE_BYTES) throw new Error(`File is larger than ${MAX_FILE_BYTES.toLocaleString()} bytes.`);
-    const version = (Number(item.version) || 0) + 1;
-    await transaction("readwrite", (store) => store.put({ ...item, content, version, updatedAt: Date.now() }));
-    await refresh();
-    notify({ type: "saved", paths: [item.path], version });
+    const result = await writeFiles([{
+      path: item.path,
+      content,
+      expectedRevision: Number(item.version) || 0,
+      expectedHash: item.hash || await contentHash(item.content || "")
+    }], { source: "workspace-editor", taskId: item.taskId || "" });
+    notify({ type: "saved", paths: [item.path], version: result[0].version, hash: result[0].hash });
     setStatus("File saved locally", "success");
   }
 
@@ -322,13 +364,12 @@
   async function writeFiles(files, metadata = {}) {
     if (!Array.isArray(files) || files.length < 1 || files.length > MAX_FILES_PER_WRITE) throw new Error("Invalid workspace file batch.");
     if (!db) await ready;
-    const records = files.map((file) => {
+    const records = await Promise.all(files.map(async (file) => {
       const path = normalizePath(file?.path);
       const content = typeof file?.content === "string" ? file.content : "";
       if (byteLength(content) > MAX_FILE_BYTES) throw new Error(`${path} is larger than ${MAX_FILE_BYTES.toLocaleString()} bytes.`);
-      return { path, content };
-    });
-    const now = Date.now();
+      return { path, content, hash: await contentHash(content), expected: expectedFor(path, file, metadata) };
+    }));
     const taskId = typeof metadata.taskId === "string" ? metadata.taskId.slice(0, 80) : "";
     const source = typeof metadata.source === "string" ? metadata.source.slice(0, 40) : "browser-agent";
     const taskFolder = taskId ? taskFolderForId(taskId) : "";
@@ -340,21 +381,39 @@
       });
       if (conflicting) throw new Error(`Workspace path belongs to another task: ${conflicting.path}`);
     }
-    const versions = records.map(({ path }) => (Number(itemAt(path)?.version) || 0) + 1);
+    const versions = [];
     await new Promise((resolve, reject) => {
       const request = db.transaction([STORE_NAME, REVISION_STORE_NAME], "readwrite");
       const itemsStore = request.objectStore(STORE_NAME);
       const revisionsStore = request.objectStore(REVISION_STORE_NAME);
-      records.forEach(({ path, content }, index) => {
-        const current = itemAt(path);
-        const version = versions[index];
-        itemsStore.put({
-          ...(current || {}), path, parent: parentPath(path), name: baseName(path), type: "file", content,
-          version, source, taskId, createdAt: current?.createdAt || now, updatedAt: now
-        });
-        revisionsStore.put({ path, version, content, source, taskId, createdAt: now });
+      const now = Date.now();
+      let pending = records.length;
+      let settled = false;
+      let committed = false;
+      const maybeResolve = () => { if (committed && pending === 0 && !settled) { settled = true; resolve(); } };
+      const fail = (error) => { if (!settled) { settled = true; try { request.abort(); } catch {} reject(error); } };
+      records.forEach((record, index) => {
+        const read = itemsStore.get(record.path);
+        read.onsuccess = () => {
+          if (settled) return;
+          const current = read.result || null;
+          try {
+            const normalizedCurrent = current ? { ...current, hash: current.hash || null } : null;
+            assertExpected(record.path, record.expected, normalizedCurrent);
+            const version = (Number(current?.version) || 0) + 1;
+            versions[index] = version;
+            itemsStore.put({
+              ...(current || {}), path: record.path, parent: parentPath(record.path), name: baseName(record.path), type: "file", content: record.content,
+              hash: record.hash, version, source, taskId, createdAt: current?.createdAt || now, updatedAt: now
+            });
+            revisionsStore.put({ path: record.path, version, content: record.content, hash: record.hash, source, taskId, createdAt: now });
+            pending -= 1;
+            maybeResolve();
+          } catch (error) { fail(error); }
+        };
+        read.onerror = () => fail(read.error || new Error("Workspace storage failed."));
       });
-      request.oncomplete = resolve;
+      request.oncomplete = () => { committed = true; maybeResolve(); };
       request.onerror = () => reject(request.error || new Error("Workspace storage failed."));
       request.onabort = () => reject(request.error || new Error("Workspace storage was aborted."));
     });
@@ -366,9 +425,9 @@
     selectedPath = records[0].path;
     renderTree();
     renderEditor();
-    notify({ type: "applied", paths: records.map((record) => record.path), versions: versions.slice(), source, taskId });
+    notify({ type: "applied", paths: records.map((record) => record.path), versions: versions.slice(), hashes: records.map((record) => record.hash), source, taskId });
     setStatus(`Applied ${records.length} file${records.length === 1 ? "" : "s"} · revisioned locally`, "success");
-    return records.map(({ path }, index) => ({ path, version: versions[index] }));
+    return records.map(({ path, hash }, index) => ({ path, version: versions[index], hash }));
   }
 
   async function readFiles(paths) {
@@ -379,9 +438,68 @@
       const path = normalizePath(rawPath);
       const item = itemAt(path);
       if (!item || item.type !== "file") throw new Error(`Workspace file not found: ${path}`);
-      result[path] = { path, content: item.content || "", version: Number(item.version) || 1, updatedAt: item.updatedAt || null };
+      result[path] = { path, content: item.content || "", version: Number(item.version) || 1, hash: item.hash || await contentHash(item.content || ""), updatedAt: item.updatedAt || null };
     }
     return result;
+  }
+
+  async function rollbackFiles(files, metadata = {}) {
+    if (!Array.isArray(files) || files.length < 1 || files.length > MAX_FILES_PER_WRITE) throw new Error("Invalid workspace rollback batch.");
+    if (!db) await ready;
+    const targets = await Promise.all(files.map(async (file) => {
+      const path = normalizePath(file?.path);
+      const version = Number(file?.version ?? file?.targetVersion);
+      if (!Number.isInteger(version) || version < 1) throw new Error(`Invalid revision for ${path}.`);
+      return { path, version, expected: expectedFor(path, file, metadata) };
+    }));
+    const restored = [];
+    await new Promise((resolve, reject) => {
+      const request = db.transaction([STORE_NAME, REVISION_STORE_NAME], "readwrite");
+      const itemsStore = request.objectStore(STORE_NAME);
+      const revisionsStore = request.objectStore(REVISION_STORE_NAME);
+      const current = new Map();
+      const revision = new Map();
+      let pending = targets.length * 2;
+      let settled = false;
+      let committed = false;
+      let writesReady = false;
+      const maybeResolve = () => { if (committed && writesReady && !settled) { settled = true; resolve(); } };
+      const fail = (error) => { if (!settled) { settled = true; try { request.abort(); } catch {} reject(error); } };
+      const finishRead = () => {
+        pending -= 1;
+        if (pending || settled) return;
+        Promise.all(targets.map(async (target) => {
+          const item = current.get(target.path) || null;
+          const sourceRevision = revision.get(target.path);
+          if (!sourceRevision) throw new Error(`Workspace revision not found: ${target.path}@${target.version}`);
+          const actualHash = item?.hash || null;
+          assertExpected(target.path, target.expected, { version: Number(item?.version) || 0, hash: actualHash });
+          const content = typeof sourceRevision.content === "string" ? sourceRevision.content : "";
+          if (!sourceRevision.hash) throw new Error(`Workspace revision hash unavailable: ${target.path}@${target.version}`);
+          const hash = sourceRevision.hash;
+          const nextVersion = (Number(item?.version) || 0) + 1;
+          restored.push({ path: target.path, version: nextVersion, hash });
+          const now = Date.now();
+          itemsStore.put({ ...(item || {}), path: target.path, parent: parentPath(target.path), name: baseName(target.path), type: "file", content, hash, version: nextVersion, updatedAt: now });
+          revisionsStore.put({ path: target.path, version: nextVersion, content, hash, source: "rollback", taskId: item?.taskId || "", createdAt: now, restoredFrom: target.version });
+        })).then(() => { writesReady = true; maybeResolve(); }).catch(fail);
+      };
+      targets.forEach((target) => {
+        const itemRequest = itemsStore.get(target.path);
+        itemRequest.onsuccess = () => { current.set(target.path, itemRequest.result || null); finishRead(); };
+        itemRequest.onerror = () => fail(itemRequest.error || new Error("Workspace storage failed."));
+        const revisionRequest = revisionsStore.get([target.path, target.version]);
+        revisionRequest.onsuccess = () => { revision.set(target.path, revisionRequest.result || null); finishRead(); };
+        revisionRequest.onerror = () => fail(revisionRequest.error || new Error("Workspace storage failed."));
+      });
+      request.oncomplete = () => { committed = true; maybeResolve(); };
+      request.onerror = () => reject(request.error || new Error("Workspace storage failed."));
+      request.onabort = () => reject(request.error || new Error("Workspace storage was aborted."));
+    });
+    await refresh();
+    notify({ type: "rolled_back", paths: restored.map(({ path }) => path), versions: restored.map(({ version }) => version), hashes: restored.map(({ hash }) => hash) });
+    setStatus(`Restored ${restored.length} file${restored.length === 1 ? "" : "s"} · revisioned locally`, "success");
+    return restored;
   }
 
   async function ensureTaskFolder(taskId) {
@@ -405,7 +523,12 @@
   async function writeTaskFiles(taskId, files, metadata = {}) {
     const folder = await ensureTaskFolder(taskId);
     if (!Array.isArray(files) || files.length < 1) throw new Error("Invalid task file batch.");
-    const taskFiles = files.map((file) => ({ path: `${folder}/${taskFileName(file?.name ?? file?.path)}`, content: typeof file?.content === "string" ? file.content : "" }));
+    const taskFiles = files.map((file) => ({
+      path: `${folder}/${taskFileName(file?.name ?? file?.path)}`,
+      content: typeof file?.content === "string" ? file.content : "",
+      ...(file?.expectedRevision === undefined ? {} : { expectedRevision: file.expectedRevision }),
+      ...(file?.expectedHash === undefined ? {} : { expectedHash: file.expectedHash })
+    }));
     return writeFiles(taskFiles, { ...metadata, taskId, source: metadata.source || "browser-agent" });
   }
 
@@ -419,7 +542,7 @@
     const folder = taskFolderForId(taskId);
     if (!db) await ready;
     return items.filter((item) => item.type === "file" && item.path.startsWith(`${folder}/`)).map((item) => ({
-      path: item.path.slice(folder.length + 1), content: item.content || "", version: Number(item.version) || 1, updatedAt: item.updatedAt || null
+      path: item.path.slice(folder.length + 1), content: item.content || "", version: Number(item.version) || 1, hash: item.hash || null, updatedAt: item.updatedAt || null
     }));
   }
 
@@ -439,7 +562,8 @@
       files.push({
         path: item.path.slice(folder.length + 1),
         content,
-        version: Number(item.version) || 1
+        version: Number(item.version) || 1,
+        hash: item.hash || await contentHash(content)
       });
       totalBytes += size;
     }
@@ -478,7 +602,7 @@
 
   async function listFiles() {
     if (!db) await ready;
-    return items.filter((item) => item.type === "file").map((item) => ({ path: item.path, content: item.content || "", version: Number(item.version) || 1, updatedAt: item.updatedAt || null }));
+    return Promise.all(items.filter((item) => item.type === "file").map(async (item) => ({ path: item.path, content: item.content || "", version: Number(item.version) || 1, hash: item.hash || await contentHash(item.content || ""), updatedAt: item.updatedAt || null })));
   }
 
   function subscribe(listener) {
@@ -523,6 +647,6 @@
   })();
   ready.catch(() => {});
 
-  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, listFiles, ensureTaskFolder, writeTaskFiles, readTaskFiles, listTaskFiles, readTaskContext, taskFolderForId, setActiveTask, revealActiveTask, getActiveTaskFolder: () => activeTaskFolder, subscribe, maxFileBytes: MAX_FILE_BYTES, maxTaskContextBytes: MAX_TASK_CONTEXT_BYTES, maxTaskContextFiles: MAX_TASK_CONTEXT_FILES };
+  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, rollbackFiles, listFiles, ensureTaskFolder, writeTaskFiles, readTaskFiles, listTaskFiles, readTaskContext, taskFolderForId, setActiveTask, revealActiveTask, getActiveTaskFolder: () => activeTaskFolder, subscribe, maxFileBytes: MAX_FILE_BYTES, maxTaskContextBytes: MAX_TASK_CONTEXT_BYTES, maxTaskContextFiles: MAX_TASK_CONTEXT_FILES };
   window.dispatchEvent(new CustomEvent("webai:workspace-ready"));
 })();
