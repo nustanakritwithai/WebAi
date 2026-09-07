@@ -1659,7 +1659,27 @@ function renderPlanContent(text) {
 }
 
 function showPlan(plan) { els.planEmpty.classList.add("hidden"); els.planBox.classList.remove("hidden"); renderPlanContent(planText(plan)); selectTab("plan"); }
-function selectTab(name) { $$(".tabBtn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name)); $$(".tabPanel").forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${name}`)); document.querySelector("#workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
+function selectTab(name) {
+  const fileView = name === "files";
+  $$(".tabBtn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name));
+  $$(".tabPanel").forEach((panel) => panel.classList.toggle("active", !fileView && panel.id === `tab-${name}`));
+
+  // Files is a real workspace destination, not a synthetic #tab-files panel.
+  // The shell moves #fileWorkspace beside #workspace at runtime, so switch it
+  // explicitly while keeping Preview/Diff/Tests on their existing tab panels.
+  const workspace = document.querySelector("#workspace");
+  const workspaceGrid = workspace?.querySelector(".workspaceGrid");
+  const fileWorkspace = document.querySelector("#fileWorkspace");
+  if (workspaceGrid) {
+    workspaceGrid.hidden = fileView;
+    workspaceGrid.setAttribute("aria-hidden", String(fileView));
+  }
+  if (fileWorkspace) {
+    fileWorkspace.hidden = !fileView;
+    fileWorkspace.setAttribute("aria-hidden", String(!fileView));
+  }
+  workspace?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 async function callPlan(goal) {
   els.activeAgent.textContent = "OpenTyphoon";
