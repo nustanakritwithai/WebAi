@@ -2,6 +2,8 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const BROWSER_AGENT_STORAGE_KEY = "webai.browserAgentTask";
 const BROWSER_TASK_ID_PATTERN = /^BROWSER-[0-9]{8}$/;
+const BROWSER_HANDOFF_FILE = "HANDOFF.json";
+const CONTINUE_HANDOFF_INSTRUCTION = "Complete the next unfinished implementation step using the saved plan and handoff; do not create a new task.";
 const AGENT_MODEL_CONTEXT_MAX_FILES = 12;
 const AGENT_MODEL_CONTEXT_MAX_FILE_BYTES = 12_000;
 const AGENT_MODEL_CONTEXT_MAX_BYTES = 48_000;
@@ -188,8 +190,10 @@ async function restoreBrowserMemory() {
           mode: task.mode || "agent",
           status: task.status || "awaiting_preview",
           startedAt: Date.parse(task.updatedAt || "") || Date.now(),
-          events: [{ type: "task_recovered", at: new Date().toISOString() }],
-          plan: null,
+           events: [{ type: "task_recovered", at: new Date().toISOString() }],
+           plan: null,
+           planVersion: 1,
+           handoff: null,
           demo: null,
           error: task.detail || "",
           lastFailureStage: "",
@@ -205,12 +209,20 @@ async function restoreBrowserMemory() {
           const workspace = await getBrowserWorkspace();
           recovered.workspaceFolder = workspace.taskFolderForId(recovered.id);
           const context = await workspace.readTaskContext(recovered.id);
-          const planFile = context.files.find((file) => file.path === "PLAN.md");
-          const taskFile = context.files.find((file) => file.path === "TASK.json");
-          recovered.plan = planFile?.content || null;
-          recovered.appliedFiles = context.files
-            .filter((file) => !["PLAN.md", "TASK.json"].includes(file.path))
-            .map((file) => ({ path: `${recovered.workspaceFolder}/${file.path}`, version: file.version }));
+           const planFile = context.files.find((file) => file.path === "PLAN.md");
+           const taskFile = context.files.find((file) => file.path === "TASK.json");
+           const handoffFile = context.files.find((file) => file.path === BROWSER_HANDOFF_FILE);
+           recovered.plan = planFile?.content || null;
+           try {
+             const savedHandoff = JSON.parse(handoffFile?.content || "null");
+             if (savedHandoff?.taskId === recovered.id && savedHandoff?.schema === "webai.browser-task-handoff.v1") {
+               recovered.handoff = savedHandoff;
+               recovered.planVersion = Number(savedHandoff.planVersion) || 1;
+             }
+           } catch { /* Older tasks do not have a structured handoff yet. */ }
+           recovered.appliedFiles = context.files
+             .filter((file) => !isBrowserTaskMetadataPath(file.path))
+             .map((file) => ({ path: `${recovered.workspaceFolder}/${file.path}`, version: file.version }));
           try {
             const metadata = JSON.parse(taskFile?.content || "{}");
             recovered.artifactManifest = Array.isArray(metadata.files) ? metadata.files.map((name) => ({ name: String(name), kind: artifactKindForName(name) })) : [];
@@ -220,7 +232,8 @@ async function restoreBrowserMemory() {
           recovered.artifactProgress = { saved: [...savedNames], pending: recovered.artifactManifest.filter((file) => !savedNames.has(file.name)) };
           if (recovered.artifactProgress.pending.length) recovered.status = "awaiting_resume";
           else if (recovered.artifactKind === "document" && recovered.appliedFiles.length) recovered.status = "saved";
-          if (recovered.status === "completed") recovered.status = "awaiting_preview";
+           if (recovered.status === "completed") recovered.status = "awaiting_preview";
+           recovered.handoff = buildBrowserTaskHandoff(recovered);
         } catch { /* Workspace recovery remains best-effort; browser memory still restores the task identity. */ }
         applyAgentTask(recovered);
         log("Recovered local browser task, conversation memory, and bounded task context", "ok");
@@ -870,7 +883,10 @@ function incrementCompletedTask() {
 }
 
 function saveBrowserAgentTask() {
-  if (state.agentTask) localStorage.setItem(BROWSER_AGENT_STORAGE_KEY, JSON.stringify(state.agentTask));
+  if (!state.agentTask) return;
+  state.agentTask.handoff = buildBrowserTaskHandoff(state.agentTask);
+  localStorage.setItem(BROWSER_AGENT_STORAGE_KEY, JSON.stringify(state.agentTask));
+  queueBrowserTaskHandoffWrite(state.agentTask);
 }
 
 function addBrowserAgentEvent(type, detail = "") {
@@ -878,6 +894,71 @@ function addBrowserAgentEvent(type, detail = "") {
   state.agentTask.events = Array.isArray(state.agentTask.events) ? state.agentTask.events : [];
   state.agentTask.events.push({ type, detail, at: new Date().toISOString() });
   saveBrowserAgentTask();
+}
+
+function browserArtifactName(path) {
+  const value = String(path || "");
+  return value.slice(value.lastIndexOf("/") + 1);
+}
+
+function browserTaskArtifactRevisions(task) {
+  return Object.fromEntries((Array.isArray(task?.appliedFiles) ? task.appliedFiles : [])
+    .filter((file) => file?.path && Number(file.version) > 0)
+    .map((file) => [browserArtifactName(file.path), Number(file.version)]));
+}
+
+function browserPlanSummary(task) {
+  if (task?.plan && typeof task.plan === "object") return String(task.plan.summary || task.goal || "").trim();
+  const lines = String(task?.plan || task?.goal || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return (lines.find((line) => !/^#|^-\s*(Task|Goal|Request|Storage|Status):/i.test(line)) || lines[0] || "").slice(0, 2_000);
+}
+
+function buildBrowserTaskHandoff(task = state.agentTask) {
+  if (!task?.id) return null;
+  const pending = Array.isArray(task.artifactProgress?.pending)
+    ? task.artifactProgress.pending.map((file) => typeof file === "string" ? file : file?.name).filter(Boolean)
+    : [];
+  const saved = Array.isArray(task.artifactProgress?.saved) ? task.artifactProgress.saved.filter(Boolean) : [];
+  const revisions = browserTaskArtifactRevisions(task);
+  const completedSteps = saved.map((name) => ({ id: `artifact:${name}`, title: `บันทึกไฟล์ ${name}`, status: "done", evidence: { revision: revisions[name] || null } }));
+  const nextStepId = pending.length ? `artifact:${pending[0]}` : ({
+    awaiting_approval: "approve-plan",
+    awaiting_preview: "run-preview",
+    awaiting_verification: "verify-preview",
+    verification_failed: "repair-and-verify",
+    awaiting_resume: "resume-artifacts"
+  }[task.status] || null);
+  const remainingWork = pending.length
+    ? pending.map((name) => ({ id: `artifact:${name}`, title: `สร้างและบันทึก ${name}`, status: "pending" }))
+    : (nextStepId ? [{ id: nextStepId, title: agentStatusLabel(task.status), status: "pending" }] : []);
+  return {
+    schema: "webai.browser-task-handoff.v1",
+    taskId: task.id,
+    planVersion: Number(task.planVersion) || 1,
+    summary: browserPlanSummary(task),
+    completedSteps,
+    nextStepId,
+    remainingWork,
+    blockers: [task.error, task.status === "failed" ? task.lastFailureStage : ""].filter(Boolean),
+    artifactRevisions: revisions,
+    status: task.status || "working",
+    updatedAt: new Date().toISOString()
+  };
+}
+
+let browserHandoffWriteChain = Promise.resolve();
+function queueBrowserTaskHandoffWrite(task) {
+  const workspace = window.WebAiBrowserWorkspace;
+  if (!workspace?.writeTaskFiles || !task?.id || !task.workspaceFolder) return;
+  const handoff = buildBrowserTaskHandoff(task);
+  browserHandoffWriteChain = browserHandoffWriteChain.catch(() => {}).then(async () => {
+    if (state.agentTask?.id !== task.id) return;
+    await workspace.writeTaskFiles(task.id, [{ name: BROWSER_HANDOFF_FILE, content: JSON.stringify(handoff, null, 2) }], { source: "browser-agent-handoff", taskId: task.id });
+  });
+}
+
+function isBrowserTaskMetadataPath(path) {
+  return ["PLAN.md", "TASK.json", BROWSER_HANDOFF_FILE].includes(browserArtifactName(path));
 }
 
 function typhoonAnswer(data) {
@@ -1169,16 +1250,30 @@ function invalidateBrowserTaskEvidence(reason = "Task artifacts changed", paths 
 function bindBrowserWorkspaceEvents(workspace) {
   if (workspaceUnsubscribe || typeof workspace?.subscribe !== "function") return;
   workspaceUnsubscribe = workspace.subscribe((change) => {
-    if (!isBrowserAgentTask() || !change || !["saved", "created", "deleted"].includes(change.type)) return;
-    invalidateBrowserTaskEvidence("Manual workspace edit invalidated old verification evidence", Array.isArray(change.paths) ? change.paths : []);
+     if (!isBrowserAgentTask() || !change || !["saved", "created", "deleted"].includes(change.type)) return;
+     const artifactPaths = (Array.isArray(change.paths) ? change.paths : []).filter((path) => !isBrowserTaskMetadataPath(path));
+     if (Array.isArray(change.paths) && change.paths.length && !artifactPaths.length) return;
+     invalidateBrowserTaskEvidence("Manual workspace edit invalidated old verification evidence", artifactPaths);
   });
 }
 
 async function reconcileBrowserTaskEvidence(workspace) {
   const task = state.agentTask;
-  const previewRevisions = task?.preview?.revisions || task?.preview?.versions;
-  if (!isBrowserAgentTask(task) || !previewRevisions || !Object.keys(previewRevisions).length) return;
+  if (!isBrowserAgentTask(task)) return;
   try {
+    const context = await workspace.readTaskContext(task.id);
+    const handoffFile = context?.files?.find((file) => file.path === BROWSER_HANDOFF_FILE);
+    let savedHandoff = null;
+    try { savedHandoff = JSON.parse(handoffFile?.content || "null"); } catch { /* Treat malformed handoff as legacy task state. */ }
+    if (savedHandoff?.taskId === task.id && savedHandoff?.schema === "webai.browser-task-handoff.v1") {
+      task.handoff = savedHandoff;
+      task.planVersion = Number(savedHandoff.planVersion) || Number(task.planVersion) || 1;
+    } else {
+      task.handoff = buildBrowserTaskHandoff(task);
+      saveBrowserAgentTask();
+    }
+    const previewRevisions = task?.preview?.revisions || task?.preview?.versions;
+    if (!previewRevisions || !Object.keys(previewRevisions).length) return;
     const names = Object.keys(previewRevisions);
     const records = await workspace.readTaskFiles(task.id, names);
     const current = Object.fromEntries(names.map((name) => [`${task.workspaceFolder}/${name}`, Number(records[`${task.workspaceFolder}/${name}`]?.version) || 0]));
@@ -1200,6 +1295,8 @@ async function createBrowserAgentTask(goal, mode = "agent") {
     startedAt: Date.now(),
     events: [{ type: "task_created", at: new Date().toISOString() }],
     plan: null,
+    planVersion: 1,
+    handoff: null,
     demo: null,
     error: "",
     verification: null,
@@ -1220,6 +1317,7 @@ async function createBrowserAgentTask(goal, mode = "agent") {
   log(`Create local ${task.id} · Host A OpenTyphoon`);
   const workspace = await getBrowserWorkspace();
   task.workspaceFolder = await workspace.ensureTaskFolder(task.id);
+  saveBrowserAgentTask();
   await workspace.writeTaskFiles(task.id, [
     { name: "PLAN.md", content: `# Browser Agent Plan\n\n- Task: ${task.id}\n- Goal: ${task.goal}\n- Status: planning\n- Storage: ${task.workspaceFolder}\n` },
     { name: "TASK.json", content: JSON.stringify({ id: task.id, goal: task.goal, createdAt: task.startedAt, localOnly: true, workspaceFolder: task.workspaceFolder }, null, 2) }
@@ -1233,6 +1331,7 @@ async function createBrowserAgentTask(goal, mode = "agent") {
   task.plan = browserPlanWithoutSource(typhoonAnswer(data));
   await workspace.writeTaskFiles(task.id, [{ name: "PLAN.md", content: browserAgentPlanDocument(task, task.plan) }], { source: "browser-agent", taskId: task.id });
   task.status = "executing";
+  saveBrowserAgentTask();
   addBrowserAgentEvent("plan_ready", "Structured plan ready; generating workspace artifacts automatically");
   applyAgentTask(task);
   showPlan(task.plan);
@@ -1318,7 +1417,7 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
       if (documentOnly) {
         const manifestResponse = await requestBrowserAgentChat([
           { role: "system", content: "Return only compact JSON: {\"files\":[{\"name\":\"...\"}]}. This is a document-only request, so use .md or .txt files. Relative paths only, no code, no markdown fences, no explanation." },
-          { role: "user", content: `Goal: ${task.goal}\nRequest: ${task.latestCommand || task.goal}\nPlan: ${planText(task.plan)}` }
+          { role: "user", content: `Authoritative handoff: ${JSON.stringify(task.handoff || buildBrowserTaskHandoff(task))}\nGoal: ${task.goal}\nPlan: ${planText(task.plan)}` }
         ], "browser-manifest", task.id, { maxTokens: 700 });
         if (!isCurrentGeneration(task, generationId)) return;
         manifest = parseArtifactManifest(typhoonAnswer(manifestResponse));
@@ -1341,7 +1440,7 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
       const file = task.artifactProgress.pending[0];
       const requestFile = (repairError = "") => requestBrowserAgentChat([
         { role: "system", content: `Create only ${file.name}. Return exactly one fenced ${file.kind} block containing its full content, with no explanation. Keep it concise. No external URLs, network calls, backend calls, repository edits, filesystem operations, server tests, or native workers. Use local in-memory data and DOM events only. For browser index.html, include exactly one local <script src=\"app.js\"></script> reference and no inline JavaScript. If you link CSS, use only the local <link rel=\"stylesheet\" href=\"./style.css\"> reference; never use an external stylesheet.${repairError ? ` The previous version was rejected: ${repairError}. Correct that exact issue.` : ""}` },
-        { role: "user", content: `Goal: ${task.goal}\nRequest: ${task.latestCommand || task.goal}\nPlan: ${planText(task.plan)}\nTarget: ${file.name}` }
+        { role: "user", content: `${CONTINUE_HANDOFF_INSTRUCTION}\nAuthoritative handoff: ${JSON.stringify(task.handoff || buildBrowserTaskHandoff(task))}\nGoal: ${task.goal}\nPlan: ${planText(task.plan)}\nTarget: ${file.name}` }
       ], "browser-artifact", task.id, { maxTokens: 3500 });
       let response = await requestFile();
       if (!isCurrentGeneration(task, generationId)) return;
@@ -2002,6 +2101,15 @@ window.WebAiContinueTask = async () => {
     return continueNotice(`task ${task.id} ยังอยู่ในขั้น ${agentStatusLabel(task.status)} — รอผลลัพธ์ก่อนกด Continue`, { error: true });
   }
   if (["awaiting_approval", "awaiting_resume"].includes(task.status)) return approveAgentExecution();
+  const handoff = task.handoff?.taskId === task.id ? task.handoff : buildBrowserTaskHandoff(task);
+  const pending = Array.isArray(handoff?.remainingWork) ? handoff.remainingWork.filter((step) => step?.status !== "done") : [];
+  if (task.status === "failed" && pending.length && task.lastFailureStage === "artifact_generation") {
+    task.status = "awaiting_resume";
+    task.error = "";
+    saveBrowserAgentTask();
+    applyAgentTask(task);
+    return approveAgentExecution();
+  }
   if (task.status === "awaiting_preview") return runWorkspacePreview();
   if (task.status === "awaiting_verification") {
     if (!hasCurrentPreviewEvidence(task)) {
@@ -2011,16 +2119,18 @@ window.WebAiContinueTask = async () => {
     }
     return verifyAgentTask();
   }
-  const command = els.input.value.trim();
-  if (["completed", "saved"].includes(task.status) && !command) {
+  if (["completed", "saved"].includes(task.status) && !pending.length) {
     const notice = continueNotice(`งาน ${task.id} เสร็จแล้ว ไฟล์อยู่ที่ ${task.workspaceFolder || `tasks/${task.id}`} — ใส่คำสั่งใหม่เพื่อแก้ไฟล์เดิม`, { focus: false });
     selectTab("files");
     return notice;
   }
-  return continueExistingBrowserTask(
-    task,
-    command || "Continue the current task using its saved artifacts. Complete the next unfinished implementation step without creating a new task."
-  );
+  if (pending.length) {
+    task.status = "awaiting_resume";
+    saveBrowserAgentTask();
+    applyAgentTask(task);
+    return approveAgentExecution();
+  }
+  return continueNotice(`งาน ${task.id} ไม่มีขั้นค้างจาก handoff ให้ทำต่อ — ใช้ Run Task เมื่อต้องการคำสั่งใหม่`, { focus: false });
 };
 
 async function runTask() {
