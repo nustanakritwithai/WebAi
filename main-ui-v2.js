@@ -79,6 +79,8 @@
     const workspace = $("#workspace");
     const files = $("#fileWorkspace");
     const lower = $(".lowerGrid");
+    const workspaceGrid = workspace?.querySelector(".workspaceGrid");
+    const tabStage = workspaceGrid?.querySelector(".tabStage");
 
     const contextStack = el("section", "workspaceContextStack");
     contextStack.dataset.shellRegion = "task-context";
@@ -93,7 +95,17 @@
     });
     if (contextStack.childElementCount) workspacePane.appendChild(contextStack);
     if (workspace) workspacePane.appendChild(workspace);
-    if (files) workspacePane.appendChild(files);
+    // Browser Workspace is the real Files tab content. Mount the existing
+    // tree/editor DOM inside the tab stage instead of leaving it as a sibling
+    // section below the workspace, where tab switching could expose an empty
+    // stage while the files lived in a different scroll container.
+    if (files && tabStage) {
+      files.classList.add("workspaceFilesTabPanel");
+      files.dataset.shellRegion = "files-tab";
+      tabStage.appendChild(files);
+    } else if (files) {
+      workspacePane.appendChild(files);
+    }
     if (lower) workspacePane.appendChild(lower);
     appShell.appendChild(workspacePane);
 
@@ -260,13 +272,26 @@
       else window.WebAiBrowserWorkspace?.revealActiveTask?.();
     }
     const workspaceGrid = workspace?.querySelector(".workspaceGrid");
+    const tabStage = workspaceGrid?.querySelector(".tabStage");
+    const nestedFiles = Boolean(files && tabStage && files.parentElement === tabStage);
     if (workspace) {
       workspace.hidden = false;
       workspace.setAttribute("aria-hidden", "false");
     }
     if (workspaceGrid) {
-      workspaceGrid.hidden = fileView;
-      workspaceGrid.setAttribute("aria-hidden", String(fileView));
+      workspaceGrid.hidden = nestedFiles ? false : fileView;
+      workspaceGrid.setAttribute("aria-hidden", String(nestedFiles ? false : fileView));
+    }
+    if (nestedFiles && tabStage) {
+      tabStage.querySelectorAll(":scope > .tabPanel").forEach((panel) => {
+        panel.hidden = fileView;
+        panel.setAttribute("aria-hidden", String(fileView));
+      });
+      const inspector = workspaceGrid?.querySelector(":scope > .inspector");
+      if (inspector) {
+        inspector.hidden = fileView;
+        inspector.setAttribute("aria-hidden", String(fileView));
+      }
     }
     if (files) {
       files.hidden = !fileView;

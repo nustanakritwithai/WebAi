@@ -94,6 +94,10 @@ const filesTab = tablist && descendants(tablist, (node) => node.tag === "button"
 check("Files tab uses an unambiguous files destination", filesTab && (attr(filesTab, "data-tab") === "files" || attr(filesTab, "data-workspace-tab") === "files"), filesTab ? `data-tab=${attr(filesTab, "data-tab")} data-workspace-tab=${attr(filesTab, "data-workspace-tab")}` : "Files tab missing");
 check("workspace keeps matching Preview, Diff, and Tests panels", workspace && ["preview", "diff", "tests"].every((tab) => id(`tab-${tab}`) && id(`tab-${tab}`).parent === workspace.children.find((node) => node.type === "element" && attr(node, "class").includes("workspaceGrid"))?.children.find((node) => node.type === "element" && attr(node, "class").includes("tabStage"))));
 check("workspace includes file tree and editor hooks", workspace && id("workspaceTree")?.tag === "div" && id("workspaceEditor")?.tag === "div" && id("workspaceEditorInput")?.tag === "textarea");
+check(
+  "Browser Workspace is mounted into the Files tab stage",
+  /files\s*&&\s*tabStage[\s\S]{0,260}tabStage\.appendChild\(files\)/.test(uiSource),
+);
 
 check("mobile navigation is a semantic nav with a More hook", mobileNav?.tag === "nav" && attr(mobileNav, "aria-label") && id("mobileMoreBtn")?.parent === mobileNav);
 check("connection drawer has dialog semantics, label, and close hook", drawer?.tag === "div" && attr(drawer, "aria-hidden") === "true" && descendants(drawer, (node) => attr(node, "role") === "dialog" && attr(node, "aria-modal") === "true" && attr(node, "aria-labelledby") === "drawerTitle").length === 1 && hasDescendant(drawer, (node) => node === id("closeDrawer")));
@@ -131,6 +135,10 @@ check(
   "Files is a real workspace destination instead of a Plan alias",
   filesTab && attr(filesTab, "data-tab") === "files",
   filesTab ? `data-tab=${attr(filesTab, "data-tab")}` : "Files tab missing",
+);
+check(
+  "Files view keeps its workspace grid mounted while showing the file panel",
+  /const nestedFiles\s*=\s*Boolean\([\s\S]{0,220}files\.parentElement\s*===\s*tabStage\)[\s\S]{0,420}workspaceGrid\.hidden\s*=\s*nestedFiles\s*\?\s*false\s*:\s*fileView/.test(uiSource),
 );
 
 // The shell must remain horizontal on desktop. A viewport below this contract's

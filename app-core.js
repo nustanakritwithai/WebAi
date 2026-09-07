@@ -1706,9 +1706,22 @@ function selectTab(name) {
   const workspace = document.querySelector("#workspace");
   const workspaceGrid = workspace?.querySelector(".workspaceGrid");
   const fileWorkspace = document.querySelector("#fileWorkspace");
+  const tabStage = workspaceGrid?.querySelector(".tabStage");
+  const nestedFiles = Boolean(fileWorkspace && tabStage && fileWorkspace.parentElement === tabStage);
   if (workspaceGrid) {
-    workspaceGrid.hidden = fileView;
-    workspaceGrid.setAttribute("aria-hidden", String(fileView));
+    workspaceGrid.hidden = nestedFiles ? false : fileView;
+    workspaceGrid.setAttribute("aria-hidden", String(nestedFiles ? false : fileView));
+  }
+  if (nestedFiles && tabStage) {
+    tabStage.querySelectorAll(":scope > .tabPanel").forEach((panel) => {
+      panel.hidden = fileView;
+      panel.setAttribute("aria-hidden", String(fileView));
+    });
+    const inspector = workspaceGrid?.querySelector(":scope > .inspector");
+    if (inspector) {
+      inspector.hidden = fileView;
+      inspector.setAttribute("aria-hidden", String(fileView));
+    }
   }
   if (fileWorkspace) {
     fileWorkspace.hidden = !fileView;
