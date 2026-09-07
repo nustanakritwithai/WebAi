@@ -1096,3 +1096,30 @@ html[data-main-ui="v2"][data-shell="three-pane"] #tab-preview.active .previewCan
   flex:1 1 auto;
   min-height:0;
 }
+
+/* Preview is a focused viewport.  When it is selected, give the right pane
+   back all available height instead of reserving space for task context and
+   system cards that belong to the other workspace views. */
+@media(min-width:901px){
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane[data-workspace-view="preview"]{
+    overflow:hidden;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane[data-workspace-view="preview"] > .workspaceContextStack,
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane[data-workspace-view="preview"] > .lowerGrid{
+    display:none;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane[data-workspace-view="preview"] > #workspace{
+    flex:1 1 auto;
+    width:100%;
+    height:100%;
+    min-height:0;
+    margin:0;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane[data-workspace-view="preview"] > #workspace > .workspaceGrid{
+    min-height:0;
+    height:100%;
+  }
+}
