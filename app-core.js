@@ -1051,6 +1051,10 @@ function normalizeBrowserScriptReference(code) {
   return String(code || "").replace(/(<\s*script\b[^>]*\bsrc\s*=\s*["'])(?:\.\/)?[A-Za-z0-9_-]+\.js(?:\?[^"']*)?(["'][^>]*>\s*<\/script\s*>)/gi, "$1app.js$2");
 }
 
+function normalizeBrowserStylesheetReference(code) {
+  return String(code || "").replace(/<\s*link\b(?=[^>]*\brel\s*=\s*["'][^"']*\bstylesheet\b[^"']*["'])(?=[^>]*\bhref\s*=\s*["'](?:\.\/)?[^"'?#]+\.css(?:[?#][^"']*)?["'])[^>]*>/gi, "");
+}
+
 function artifactFileContent(text, file) {
   const aliases = file.kind === "javascript" ? ["javascript", "js"] : [file.kind];
   const block = (fencedBlocks(text) || []).find((entry) => aliases.includes(String(entry.language || "").toLowerCase()));
@@ -1314,7 +1318,7 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
       if (!isCurrentGeneration(task, generationId)) return;
       const file = task.artifactProgress.pending[0];
       const requestFile = (repairError = "") => requestBrowserAgentChat([
-        { role: "system", content: `Create only ${file.name}. Return exactly one fenced ${file.kind} block containing its full content, with no explanation. Keep it concise. No external URLs, network calls, backend calls, repository edits, filesystem operations, server tests, or native workers. Use local in-memory data and DOM events only. For browser index.html, include exactly one local <script src=\"app.js\"></script> reference and no inline JavaScript.${repairError ? ` The previous version was rejected: ${repairError}. Correct that exact issue.` : ""}` },
+        { role: "system", content: `Create only ${file.name}. Return exactly one fenced ${file.kind} block containing its full content, with no explanation. Keep it concise. No external URLs, network calls, backend calls, repository edits, filesystem operations, server tests, or native workers. Use local in-memory data and DOM events only. For browser index.html, include exactly one local <script src=\"app.js\"></script> reference and no inline JavaScript. If you link CSS, use only the local <link rel=\"stylesheet\" href=\"./style.css\"> reference; never use an external stylesheet.${repairError ? ` The previous version was rejected: ${repairError}. Correct that exact issue.` : ""}` },
         { role: "user", content: `Goal: ${task.goal}\nRequest: ${task.latestCommand || task.goal}\nPlan: ${planText(task.plan)}\nTarget: ${file.name}` }
       ], "browser-artifact", task.id, { maxTokens: 3500 });
       let response = await requestFile();
@@ -1517,8 +1521,7 @@ function previewToken() {
 }
 
 function composeWorkspaceDocument(files, token) {
-  const index = validatePreviewCode(files["index.html"], "html")
-    .replace(/<\s*link\b[^>]*\bhref\s*=\s*["'][^"']*style\.css[^"']*["'][^>]*>/gi, "");
+  const index = normalizeBrowserStylesheetReference(validatePreviewCode(files["index.html"], "html"));
   const normalizedIndex = index
     .replace(/<\s*script\b[^>]*\bsrc\s*=\s*["'](?:\.\/)?app\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gi, "")
     .replace(/<\s*script\b[^>]*\bsrc\s*=\s*["'](?:\.\/)?app\.js(?:\?[^"']*)?["'][^>]*\/>/gi, "")
