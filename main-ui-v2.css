@@ -102,6 +102,8 @@ html[data-main-ui="v2"] .planTodoItem.is-done .planTodoMarker{background:rgba(66
 html[data-main-ui="v2"] .planTodoItem.is-failed{border-color:rgba(232,107,116,.4);}
 html[data-main-ui="v2"] .planTodoItem.is-failed .planTodoStatus{color:#ffc5c8;background:rgba(213,76,87,.18);}
 html[data-main-ui="v2"] .planTodoItem.is-blocked .planTodoStatus{color:#ffdca4;background:rgba(211,144,45,.18);}
+html[data-main-ui="v2"] .planTodoItem[aria-disabled="true"]{cursor:not-allowed;opacity:.58;filter:saturate(.72);}
+html[data-main-ui="v2"] .planTodoItem[aria-disabled="true"] .planTodoMarker{background:rgba(150,116,64,.18);color:#d8b879;}
 html[data-main-ui="v2"] :where(.planTodoAcceptance,.planTodoEvidence,.planTodoDependencies){display:block;margin-top:4px;color:var(--v2-muted);font-size:10px;line-height:1.45;overflow-wrap:anywhere;}
 html[data-main-ui="v2"] .planTodoEvidence{color:#a7e4c2;}
 html[data-main-ui="v2"] .planTodoEmpty{margin:0;color:var(--v2-muted);font-size:11px;}
