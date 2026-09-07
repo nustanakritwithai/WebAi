@@ -430,7 +430,331 @@ html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane{
     min-height:280px;
   }
 
-  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > *{
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > *{
     min-width:0;
+  }
+}
+
+/* Conversation-first center pane.  The outer shell owns the only horizontal
+   split; the middle pane now reads as a standard chat surface. */
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane{
+  overflow:hidden;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:60px;
+  padding:14px clamp(18px,4vw,34px);
+  border-bottom:1px solid var(--v2-line-soft);
+  background:rgba(13,24,40,.96);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationHeaderCopy{
+  color:var(--v2-text);
+  font-weight:800;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationHeaderStatus,
+html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerStatus{
+  color:#8debc6;
+  font-size:.82rem;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerSurface{
+  display:block;
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+  padding:28px clamp(18px,5vw,44px);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerTitle,
+html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerBody{
+  width:min(100%,820px);
+  margin-inline:auto;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerTitle{
+  margin-bottom:10px;
+  color:var(--v2-muted);
+  font-size:.78rem;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerBody{
+  display:grid;
+  gap:14px;
+  padding:22px;
+  border:1px solid rgba(106,168,255,.2);
+  border-radius:18px;
+  background:linear-gradient(180deg,rgba(18,36,60,.94),rgba(9,21,37,.97));
+  box-shadow:0 16px 42px rgba(0,0,0,.16);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerGoal{
+  margin:0;
+  color:var(--v2-text);
+  font-size:1.08rem;
+  font-weight:750;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerDetail,
+html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerPlan{
+  margin:0;
+  color:var(--v2-muted);
+  line-height:1.65;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock{
+  position:relative;
+  flex:0 0 auto;
+  margin:0;
+  border-top:1px solid var(--v2-line-soft);
+  background:rgba(7,16,29,.98);
+}
+
+/* Context and evidence belong before the Workspace tools in the right pane. */
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack{
+  order:0;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  width:100%;
+  padding:14px;
+  box-sizing:border-box;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack > *{
+  width:100%;
+  margin:0;
+  box-sizing:border-box;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack .welcome{
+  min-height:0;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack .welcome h1{
+  font-size:clamp(24px,3vw,34px);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack .currentTask{
+  padding:0;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #workspace{order:1;}
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #fileWorkspace{order:2;}
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > .lowerGrid{order:3;}
+
+@media(max-width:900px){
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane{
+    min-height:calc(100dvh - 58px);
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerSurface{
+    padding:18px 12px;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerBody{
+    padding:16px;
+  }
+}
+
+/* Standard chat composition.
+   The outer appShell remains the left / center / right layout.  These rules
+   only shape the contents of the already-created conversation and workspace
+   panes so the middle reads like a chat surface with a fixed composer. */
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  height:100%;
+  overflow:auto;
+  background:linear-gradient(180deg,rgba(13,24,40,.98),rgba(7,16,29,.98));
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .overviewBar{
+  order:0;
+  position:sticky;
+  top:0;
+  z-index:3;
+  flex:0 0 auto;
+  width:100%;
+  box-sizing:border-box;
+  margin:0;
+  padding:10px 18px;
+  border:0;
+  border-bottom:1px solid var(--v2-line-soft);
+  border-radius:0;
+  background:rgba(13,24,40,.94);
+  backdrop-filter:blur(16px);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .mainHeroV2{
+  order:1;
+  display:block;
+  flex:0 0 auto;
+  width:100%;
+  max-width:none;
+  margin:0;
+  padding:28px clamp(18px,5vw,72px) 12px;
+  box-sizing:border-box;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .mainHeroV2 > .welcome{
+  width:min(100%,820px);
+  min-height:190px;
+  margin:0 auto;
+  padding:24px 26px;
+  border:1px solid rgba(106,168,255,.2);
+  border-radius:20px;
+  background:linear-gradient(180deg,rgba(20,39,65,.9),rgba(11,24,42,.96));
+  box-shadow:0 18px 44px rgba(0,0,0,.18);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .mainHeroV2 > .welcome h1{
+  margin:8px 0 12px;
+  font-size:clamp(24px,3vw,38px);
+  line-height:1.1;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .currentTask{
+  order:2;
+  flex:0 0 auto;
+  width:min(100%,820px);
+  margin:0 auto;
+  padding:12px clamp(18px,5vw,72px) 22px;
+  box-sizing:border-box;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .currentTask .sectionHead{
+  margin-bottom:8px;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .currentTask .taskFlowBar,
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .currentTask .taskGrid{
+  width:100%;
+  box-sizing:border-box;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock{
+  order:3;
+  position:sticky;
+  bottom:0;
+  z-index:4;
+  flex:0 0 auto;
+  width:100%;
+  margin:0;
+  padding:14px clamp(18px,5vw,72px) max(14px,env(safe-area-inset-bottom));
+  box-sizing:border-box;
+  border-top:1px solid var(--v2-line-soft);
+  background:linear-gradient(180deg,rgba(7,16,29,.2),rgba(7,16,29,.98) 24%);
+  backdrop-filter:blur(16px);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock > .newTaskCard{
+  width:min(100%,820px);
+  margin:0 auto;
+  padding:14px 16px;
+  border:1px solid rgba(106,168,255,.24);
+  border-radius:17px;
+  background:rgba(9,22,39,.98);
+  box-shadow:0 14px 34px rgba(0,0,0,.24);
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock #taskInput{
+  min-height:56px;
+  max-height:180px;
+  resize:vertical;
+  border-radius:12px;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane .emptyState{
+  width:min(100%,720px);
+  margin:0 auto;
+  box-sizing:border-box;
+  padding:28px 20px;
+  border:1px dashed rgba(122,158,204,.28);
+  border-radius:16px;
+  background:rgba(7,17,30,.55);
+  text-align:center;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane{
+  display:flex !important;
+  flex-direction:column;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding:0;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > .lowerGrid{
+  order:1;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  flex:0 0 auto;
+  width:100%;
+  box-sizing:border-box;
+  margin:0;
+  padding:14px;
+  border:0;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > .lowerGrid > .card{
+  width:100%;
+  box-sizing:border-box;
+  margin:0;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #workspace{
+  order:2;
+  flex:0 0 auto;
+  width:100%;
+  min-height:520px;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > .shellResizeHandle{
+  order:3;
+  flex:0 0 8px;
+}
+
+@media(max-width:900px){
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane{
+    height:auto;
+    min-height:calc(100dvh - 58px);
+    overflow:visible;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .overviewBar{
+    position:static;
+    padding-inline:12px;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .mainHeroV2{
+    padding:16px 12px 8px;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .currentTask{
+    width:100%;
+    padding:8px 12px 16px;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDock{
+    position:sticky;
+    padding-inline:10px;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #workspace{
+    min-height:0;
   }
 }

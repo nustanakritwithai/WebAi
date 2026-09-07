@@ -104,6 +104,9 @@ requireIdList("task identity hooks remain present", ["currentTaskId", "currentTa
 requireIdList("workspace identity and persistence hooks remain present", ["workspaceCurrentFolder", "workspaceStatus", "workspaceTree", "workspaceEditorPath", "workspaceEditorInput", "saveWorkspaceFile", "deleteWorkspaceItem"]);
 check("workspace scripts are loaded after the document structure", /<script[^>]+src=["']\.\/workspace\.js\?v=[^"']+["'][^>]*defer/i.test(html));
 check("shell keeps the hero two-column composition when docking the composer", !/conversation\.appendChild\(hero\);[\s\S]{0,260}if \(composer\) \{[\s\S]{0,120}dock\.appendChild\(composer\)/.test(uiSource));
+check("center pane creates an Agent answer surface", /answerSurface\.id\s*=\s*["']chatAnswerSurface["']/.test(uiSource) && /conversation\.append\(conversationHeader,\s*answerSurface\)/.test(uiSource));
+check("composer is placed after the chat answer surface", /conversation\.append\(conversationHeader,\s*answerSurface\);[\s\S]{0,180}conversation\.appendChild\(composer\.closest/.test(uiSource));
+check("task context moves into the right workspace before evidence", /const contextStack\s*=\s*el\(["']section["'],\s*["']workspaceContextStack["']\)[\s\S]{0,650}workspacePane\.appendChild\(contextStack\)/.test(uiSource));
 
 // The shell must remain horizontal on desktop. A viewport below this contract's
 // tablet breakpoint intentionally becomes a single active pane, but the desktop

@@ -36,12 +36,11 @@
   function buildHero(main) {
     const welcome = $(".welcome");
     const task = $(".newTaskCard");
-    const overview = $(".overviewBar");
-    if (!welcome || !task || !overview || $(".mainHeroV2")) return;
-    const hero = el("section", "mainHeroV2");
-    main.insertBefore(hero, overview);
-    hero.append(welcome, task);
-    overview.classList.add("systemStripV2");
+    if (!welcome || !task) return;
+    // The welcome/task cards are context for the active job. They are moved
+    // into the right workspace context stack by installShell(); the center
+    // stays reserved for the conversation and its composer.
+    welcome.classList.add("mainHeroV2");
     const eyebrow = welcome.querySelector(".eyebrow");
     const title = welcome.querySelector("h1");
     const paragraph = welcome.querySelector("p");
@@ -80,6 +79,19 @@
     const workspace = $("#workspace");
     const files = $("#fileWorkspace");
     const lower = $(".lowerGrid");
+
+    const contextStack = el("section", "workspaceContextStack");
+    contextStack.dataset.shellRegion = "task-context";
+    contextStack.setAttribute("aria-label", "Task context");
+    const overview = $(".overviewBar");
+    const welcome = $(".welcome");
+    const tasks = $("#tasks");
+    [overview, welcome, tasks].forEach((node) => {
+      if (!node) return;
+      node.classList.toggle("systemStripV2", node === overview);
+      contextStack.appendChild(node);
+    });
+    if (contextStack.childElementCount) workspacePane.appendChild(contextStack);
     if (workspace) workspacePane.appendChild(workspace);
     if (files) workspacePane.appendChild(files);
     if (lower) workspacePane.appendChild(lower);
@@ -94,10 +106,35 @@
     }
     const conversation = el("div", "conversationPane");
     conversation.dataset.shellRegion = "conversation";
-    // Keep the existing central content order. Moving the workspace regions
-    // above must not reorder task, overview, or composer content.
-    [...main.children].forEach((child) => conversation.appendChild(child));
+    const conversationHeader = el("header", "conversationHeader");
+    conversationHeader.append(
+      el("div", "conversationHeaderCopy", "WebAi Agent"),
+      el("span", "conversationHeaderStatus", "พร้อมรับคำสั่ง")
+    );
+    conversationHeader.setAttribute("aria-label", "Conversation header");
+
+    const answerSurface = el("section", "conversationBody messageList chatAnswerSurface");
+    answerSurface.id = "chatAnswerSurface";
+    answerSurface.setAttribute("aria-live", "polite");
+    answerSurface.setAttribute("aria-label", "Agent answer");
+    const answerTitle = el("div", "chatAnswerTitle", "คำตอบและสถานะงาน");
+    const answerBody = el("div", "chatAnswerBody");
+    const answerGoal = el("p", "chatAnswerGoal");
+    answerGoal.dataset.chatField = "goal";
+    const answerDetail = el("p", "chatAnswerDetail");
+    answerDetail.dataset.chatField = "detail";
+    const answerStatus = el("span", "chatAnswerStatus");
+    answerStatus.dataset.chatField = "status";
+    const answerPlan = el("p", "chatAnswerPlan");
+    answerPlan.dataset.chatField = "plan";
+    answerBody.append(answerGoal, answerDetail, answerStatus, answerPlan);
+    answerSurface.append(answerTitle, answerBody);
+
     main.replaceChildren(conversation);
+    conversation.append(conversationHeader, answerSurface);
+    if (composer) conversation.appendChild(composer.closest(".composerDock") || composer);
+
+    installAnswerMirror(answerSurface);
 
     const header = $(".topbar");
     const menu = el("button", "shellMenuToggle", "☰");
@@ -141,6 +178,37 @@
     header?.appendChild(reveal);
     wireShellControls({ root, rail, workspacePane, workspace, files, menu, toggle, reveal, resize, chatButton, workspaceButton });
     enforcePaneLayout({ appShell, rail, main, workspacePane });
+  }
+
+  function installAnswerMirror(surface) {
+    if (!surface || surface.dataset.mirrorBound === "true") return;
+    surface.dataset.mirrorBound = "true";
+    const field = (name) => surface.querySelector(`[data-chat-field="${name}"]`);
+    const read = (selector, fallback) => $(selector)?.textContent?.trim() || fallback;
+    const update = () => {
+      const taskId = read("#currentTaskId", "NO TASK");
+      const goal = read("#currentTaskGoal", "ยังไม่มีงานที่กำลังทำ");
+      const detail = read("#currentTaskDetail", "พิมพ์เป้าหมายด้านบนแล้วกด Run Task");
+      const status = read("#taskStatus", "รอ Backend");
+      const planBox = $("#planBox");
+      const planEmpty = $("#planEmpty");
+      const plan = planBox && !planBox.hidden && planBox.textContent.trim()
+        ? `แผนงาน: ${planBox.textContent.trim()}`
+        : (planEmpty?.textContent?.trim() || "แผนงานจะปรากฏหลังเริ่ม Task");
+      const goalNode = field("goal");
+      const detailNode = field("detail");
+      const statusNode = field("status");
+      const planNode = field("plan");
+      if (goalNode) goalNode.textContent = taskId === "NO TASK" ? goal : `${taskId} · ${goal}`;
+      if (detailNode) detailNode.textContent = detail;
+      if (statusNode) statusNode.textContent = status;
+      if (planNode) planNode.textContent = plan;
+    };
+    ["#currentTaskId", "#currentTaskGoal", "#currentTaskDetail", "#taskStatus", "#planBox", "#planEmpty"].forEach((selector) => {
+      const node = $(selector);
+      if (node) new MutationObserver(update).observe(node, { childList: true, characterData: true, subtree: true, attributes: true });
+    });
+    update();
   }
 
   function enforcePaneLayout({ appShell, rail, main, workspacePane }) {
