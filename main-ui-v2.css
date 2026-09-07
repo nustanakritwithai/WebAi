@@ -109,7 +109,12 @@ html[data-main-ui="v2"] .palette{background:#0c1a2d;border-color:rgba(105,140,18
    conversation/workspace hooks used by the app shell integration.
    -------------------------------------------------------------------------- */
 html[data-main-ui="v2"]{background:var(--v2-bg);overflow-x:hidden}
-html[data-main-ui="v2"] body{min-width:0;min-height:100dvh;overflow-x:hidden}
+ html[data-main-ui="v2"] body{min-width:0;min-height:100dvh;overflow-x:hidden;font-size:calc(16px * var(--ui-font-scale,1))}
+ .uiZoomControls{display:inline-flex;align-items:center;gap:3px;margin-left:auto;padding:3px;border:1px solid rgba(115,145,184,.22);border-radius:10px;background:rgba(17,31,51,.62)}
+ .uiZoomButton,.uiZoomValue{min-width:30px;min-height:30px;padding:4px 7px;border:0;border-radius:7px;background:transparent;color:#cfe2ff;cursor:pointer;font:inherit;font-size:.78rem;font-weight:800;line-height:1}
+ .uiZoomValue{min-width:42px;color:#8ea1bc}
+ .uiZoomButton:hover,.uiZoomValue:hover{background:rgba(75,126,205,.22);color:#fff}
+ .uiZoomButton:disabled{cursor:not-allowed;opacity:.35}
 html[data-main-ui="v2"] button,html[data-main-ui="v2"] a,html[data-main-ui="v2"] input,html[data-main-ui="v2"] select,html[data-main-ui="v2"] textarea{font:inherit}
 html[data-main-ui="v2"] button,html[data-main-ui="v2"] a[role="button"],html[data-main-ui="v2"] .tabBtn,html[data-main-ui="v2"] .railItem{min-height:44px}
 html[data-main-ui="v2"] :where(button,a,input,select,textarea,[tabindex]):focus-visible{outline:3px solid color-mix(in srgb,var(--v2-accent) 78%,white);outline-offset:2px}
@@ -295,6 +300,47 @@ html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane{
   html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > .lowerGrid{
     padding:12px;
   }
+}
+
+/* Touch scrolling: mobile uses one document scroll for Chat and a dedicated
+   scroll container for the fixed Workspace panel. Keep both paths available
+   after the shell moves the legacy panels into the V2 layout. */
+@media(max-width:900px){
+  html[data-main-ui="v2"][data-shell="three-pane"],
+  html[data-main-ui="v2"][data-shell="three-pane"] body{
+    overflow-x:hidden;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell{
+    height:auto !important;
+    min-height:calc(100dvh - 58px);
+    overflow:visible !important;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .main,
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane,
+  html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerSurface{
+    height:auto !important;
+    min-height:calc(100dvh - 58px);
+    overflow:visible !important;
+    touch-action:pan-y;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane{
+    max-height:calc(100dvh - 58px);
+    overflow-x:hidden !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+    touch-action:pan-y;
+  }
+
+  .uiZoomControls{gap:1px;margin-left:4px;padding:2px}
+  .uiZoomButton,.uiZoomValue{min-width:28px;min-height:30px;padding-inline:5px}
+  .uiZoomValue{min-width:36px}
 }
 
 /* Desktop shell contract. Keep this block last so it safely wins over the
@@ -935,5 +981,33 @@ html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane > .composerDo
   html[data-main-ui="v2"][data-shell="three-pane"] .workspaceContextStack .overviewAction{
     width:100%;
     box-sizing:border-box;
+  }
+}
+
+/* Keep touch scrolling as the last mobile rule so later desktop shell rules
+   cannot reintroduce an overflow-hidden ancestor. */
+@media(max-width:900px){
+  html[data-main-ui="v2"][data-shell="three-pane"] body,
+  html[data-main-ui="v2"][data-shell="three-pane"] .main,
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane,
+  html[data-main-ui="v2"][data-shell="three-pane"] .chatAnswerSurface{
+    height:auto !important;
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell{
+    height:auto !important;
+    overflow:visible !important;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane{
+    max-height:calc(100dvh - 58px);
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
   }
 }

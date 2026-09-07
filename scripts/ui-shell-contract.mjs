@@ -125,6 +125,14 @@ check(
   "Continue prevents duplicate in-flight clicks",
   /continueButton\.dataset\.inFlight\s*===\s*["']true["'][\s\S]{0,120}return;[\s\S]{0,120}continueButton\.dataset\.inFlight\s*=\s*["']true["']/.test(uiSource),
 );
+check(
+  "text zoom controls persist a bounded local font scale",
+  /function installZoomControls\(\)[\s\S]{0,1800}webai\.uiZoom[\s\S]{0,900}--ui-font-scale/.test(uiSource) && /uiZoomControls/.test(uiCss),
+);
+check(
+  "mobile Chat and Workspace panes retain touch scrolling",
+  /@media\(max-width:900px\)[\s\S]{0,2600}touch-action:pan-y[\s\S]{0,1200}overflow-y:auto/.test(uiCss),
+);
 requireIdList("task identity hooks remain present", ["currentTaskId", "currentTaskGoal", "uiCurrentTaskState", "uiCurrentTaskFolder"]);
 requireIdList("workspace identity and persistence hooks remain present", ["workspaceCurrentFolder", "workspaceStatus", "workspaceTree", "workspaceEditorPath", "workspaceEditorInput", "saveWorkspaceFile", "deleteWorkspaceItem"]);
 check("workspace scripts are loaded after the document structure", /<script[^>]+src=["']\.\/workspace\.js\?v=[^"']+["'][^>]*defer/i.test(html));

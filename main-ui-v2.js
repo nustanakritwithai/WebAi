@@ -398,6 +398,44 @@
     }
   }
 
+  function installZoomControls() {
+    const header = $(".topbar");
+    if (!header || $("#uiZoomControls")) return;
+    const controls = el("div", "uiZoomControls");
+    controls.id = "uiZoomControls";
+    controls.setAttribute("role", "group");
+    controls.setAttribute("aria-label", "ปรับขนาดตัวอักษร");
+    const decrease = el("button", "uiZoomButton", "A−");
+    const value = el("button", "uiZoomValue", "100%");
+    const increase = el("button", "uiZoomButton", "A+");
+    [decrease, value, increase].forEach((button) => {
+      button.type = "button";
+      button.setAttribute("aria-label", button === decrease ? "ลดขนาดตัวอักษร" : button === increase ? "เพิ่มขนาดตัวอักษร" : "คืนขนาดตัวอักษร 100%");
+    });
+    controls.append(decrease, value, increase);
+    const anchor = $("#systemButton") || $(".topnav");
+    if (anchor) header.insertBefore(controls, anchor);
+    else header.appendChild(controls);
+
+    const levels = [0.9, 1, 1.1, 1.2];
+    const stored = Number(localStorage.getItem("webai.uiZoom"));
+    let index = levels.indexOf(stored);
+    if (index < 0) index = 1;
+    const apply = () => {
+      const percent = Math.round(levels[index] * 100);
+      document.documentElement.dataset.uiZoom = String(percent);
+      document.documentElement.style.setProperty("--ui-font-scale", String(levels[index]));
+      value.textContent = `${percent}%`;
+      decrease.disabled = index === 0;
+      increase.disabled = index === levels.length - 1;
+      localStorage.setItem("webai.uiZoom", String(levels[index]));
+    };
+    decrease.addEventListener("click", () => { index = Math.max(0, index - 1); apply(); });
+    increase.addEventListener("click", () => { index = Math.min(levels.length - 1, index + 1); apply(); });
+    value.addEventListener("click", () => { index = 1; apply(); });
+    apply();
+  }
+
   function addSectionLabels() {
     $("#tasks")?.classList.add("surfaceSectionV2");
     $("#workspace")?.classList.add("surfaceSectionV2");
@@ -565,6 +603,7 @@
     buildHero(main);
     installShell(main);
     upgradeNavigation();
+    installZoomControls();
     addSectionLabels();
     installTaskFlowControls();
     installArtifactLinks();
