@@ -20,11 +20,11 @@ Browser Agent เป็นเส้นทางหลัก ใช้ IndexedDB 
 
 ## โครงสร้างการทำงานเป้าหมาย
 
-คำสั่ง → เลือกงานเดิม/งานใหม่ → อ่านไฟล์และบริบท → วางแผน → อนุมัติ → เรียกเครื่องมือเขียนไฟล์ → ตรวจผล → แก้ตามข้อผิดพลาด → ส่งมอบ
+คำสั่ง → เลือกงานเดิม/งานใหม่ → อ่านไฟล์และบริบท → วางแผน → เรียกเครื่องมือเขียนไฟล์ → ตรวจผล → แก้ตามข้อผิดพลาด → ส่งมอบ
 
 ใช้ task record เดียวประกอบด้วย id, goal, status, workspaceFolder, iteration, budget, file revisions และ verification evidence ทุกหน้าจออ่านสถานะจาก record นี้ แชทแสดงคำอธิบายและรายชื่อไฟล์ ส่วนเนื้อหางานอ่านจาก Workspace
 
-ไฟล์อยู่ภายใต้ tasks/<task-id>/ เช่น PLAN.md, README.md, index.html, style.css และ app.js งานเอกสารอย่างเดียวต้องสร้าง Markdown ได้โดยไม่บังคับให้มี HTML/CSS/JS ปุ่มงานใหม่แยกจากคำสั่งแก้ต่อและไม่ลบไฟล์งานเก่า
+ไฟล์อยู่ภายใต้ tasks/<task-id>/ เช่น PLAN.md, README.md, index.html, style.css และ app.js งาน Agent/Auto สร้าง artifact หลังแผนผ่าน validation โดยอัตโนมัติ; แชทแสดงสรุปและรายชื่อไฟล์ ไม่แสดง source code เป็นผลลัพธ์หลัก งานเอกสารอย่างเดียวต้องสร้าง Markdown ได้โดยไม่บังคับให้มี HTML/CSS/JS ปุ่มงานใหม่แยกจากคำสั่งแก้ต่อและไม่ลบไฟล์งานเก่า
 
 สถานะหลัก: idle → planning → awaiting_approval → executing → verifying → completed โดยมี repairing, failed, cancelled และ interrupted สำหรับกรณีที่ต้องจัดการเพิ่ม การรีเฟรชระหว่างเขียนไฟล์ต้องตรวจ transaction ก่อนเริ่มต่อ ไม่เรียกโมเดลหรือเขียนซ้ำทันที
 
