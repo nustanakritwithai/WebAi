@@ -253,7 +253,12 @@
 
   function setWorkspaceView({ root, workspacePane, workspace, files }, view) {
     const fileView = view === "files";
-    if (fileView) window.WebAiBrowserWorkspace?.revealActiveTask?.();
+    if (fileView) {
+      // The centered answer and the Files pane share one task identity. Let
+      // app-core re-bind the active folder after IndexedDB is ready.
+      if (typeof window.WebAiSyncBrowserWorkspace === "function") window.WebAiSyncBrowserWorkspace(true);
+      else window.WebAiBrowserWorkspace?.revealActiveTask?.();
+    }
     const workspaceGrid = workspace?.querySelector(".workspaceGrid");
     if (workspace) {
       workspace.hidden = false;
@@ -421,6 +426,13 @@
     if (!summary || summary.dataset.uiBound === "true") return;
     summary.dataset.uiBound = "true";
     summary.addEventListener("click", (event) => {
+      if (event.target.closest("[data-artifact-action='open-files']")) {
+        const shell = document.documentElement.__webAiShell;
+        shell?.setWorkspaceCollapsed(false);
+        shell?.setWorkspaceView("files");
+        $(".workspacePane")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const row = event.target.closest("li,[data-artifact-path]");
       if (!row) return;
       const target = row.dataset.artifactPath || row.dataset.path || row.querySelector("span")?.textContent?.trim();
@@ -458,6 +470,13 @@
       const workspaceReady = window.WebAiBrowserWorkspace?.ready;
       if (workspaceReady?.then) workspaceReady.then(retry, retry);
       else retry();
+    });
+    summary.addEventListener("keydown", (event) => {
+      if (!(["Enter", " "].includes(event.key))) return;
+      const row = event.target.closest("li,[data-artifact-path]");
+      if (!row) return;
+      event.preventDefault();
+      row.click();
     });
   }
 

@@ -711,10 +711,26 @@ function finishTask(summary, success = true) {
   applyActionState();
 }
 
+// The center answer surface and the Files destination must always resolve to
+// the same Browser Agent task folder. Workspace.js can be present before its
+// IndexedDB hydration finishes, so wait for its ready promise before revealing
+// the folder; otherwise Files can look empty while artifacts are already saved.
+function syncAgentWorkspaceView(task = state.agentTask, reveal = false) {
+  const workspace = window.WebAiBrowserWorkspace;
+  if (!workspace || !task?.id) return Promise.resolve("");
+  const apply = () => {
+    const folder = workspace.setActiveTask?.(task.id) || "";
+    if (reveal) workspace.revealActiveTask?.();
+    return folder;
+  };
+  if (workspace.ready?.then) return workspace.ready.then(apply, () => "");
+  return Promise.resolve(apply());
+}
+
 function applyAgentTask(task) {
   if (!task) return;
   state.agentTask = task;
-  window.WebAiBrowserWorkspace?.setActiveTask?.(task.id);
+  void syncAgentWorkspaceView(task);
   localStorage.setItem(BROWSER_AGENT_STORAGE_KEY, JSON.stringify(task));
   state.taskId = task.id || state.taskId;
   els.currentTaskId.textContent = state.taskId || "AGENT TASK";
@@ -771,22 +787,36 @@ function applyAgentTask(task) {
 
 function renderArtifactSummary(task) {
   if (!els.artifactSummary) return;
+  // The centered summary is only a view of the same task folder used by Files.
+  void syncAgentWorkspaceView(task);
   if (!Array.isArray(task?.appliedFiles) || !task.appliedFiles.length) {
     els.artifactSummary.classList.add("hidden");
     els.artifactSummary.replaceChildren();
+    delete els.artifactSummary.dataset.taskId;
     return;
   }
   const folder = task.workspaceFolder || `tasks/${task.id}`;
+  els.artifactSummary.dataset.taskId = task.id || "";
   const head = document.createElement("div");
   head.className = "artifactSummaryHead";
   const title = document.createElement("b");
   title.textContent = "Artifacts saved to Browser Workspace";
   const folderLabel = document.createElement("small");
   folderLabel.textContent = folder;
-  head.append(title, folderLabel);
+  const openFiles = document.createElement("button");
+  openFiles.type = "button";
+  openFiles.className = "workspaceAction";
+  openFiles.dataset.artifactAction = "open-files";
+  openFiles.textContent = "Open Files";
+  openFiles.setAttribute("aria-label", `Open files for ${folder}`);
+  head.append(title, folderLabel, openFiles);
   const list = document.createElement("ul");
   task.appliedFiles.forEach((file) => {
     const row = document.createElement("li");
+    row.dataset.artifactPath = String(file.path || "");
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Open ${String(file.path || "artifact")}`);
     const name = document.createElement("span");
     const prefix = `${folder}/`;
     name.textContent = String(file.path || "").startsWith(prefix) ? String(file.path).slice(prefix.length) : String(file.path || "artifact");
@@ -1684,7 +1714,7 @@ function selectTab(name) {
     fileWorkspace.hidden = !fileView;
     fileWorkspace.setAttribute("aria-hidden", String(!fileView));
   }
-  if (fileView) window.WebAiBrowserWorkspace?.revealActiveTask?.();
+  if (fileView) void syncAgentWorkspaceView(state.agentTask, true);
   workspace?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1939,10 +1969,11 @@ document.addEventListener("webai:new-task", () => resetTask());
 $$('.tabBtn').forEach((btn) => btn.addEventListener("click", () => selectTab(btn.dataset.tab)));
 $$('.deviceSwitch button').forEach((btn) => btn.addEventListener("click", () => { $$('.deviceSwitch button').forEach((b) => b.classList.toggle("active", b === btn)); }));
 const syncBrowserWorkspaceTask = () => {
-  if (state.agentTask?.id) window.WebAiBrowserWorkspace?.setActiveTask?.(state.agentTask.id);
+  if (state.agentTask?.id) void syncAgentWorkspaceView(state.agentTask);
 };
 if (window.WebAiBrowserWorkspace) syncBrowserWorkspaceTask();
 else window.addEventListener("webai:workspace-ready", syncBrowserWorkspaceTask, { once: true });
+window.WebAiSyncBrowserWorkspace = (reveal = false) => syncAgentWorkspaceView(state.agentTask, reveal);
 void getBrowserWorkspace().then((workspace) => reconcileBrowserTaskEvidence(workspace)).catch(() => {});
 if (state.agentTask) {
   applyAgentTask(state.agentTask);
