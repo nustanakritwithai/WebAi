@@ -86,6 +86,12 @@ html[data-main-ui="v2"] .gateResult{border-radius:12px;background:rgba(5,15,27,.
 html[data-main-ui="v2"] .fileWorkspaceSection{margin-top:24px}
 html[data-main-ui="v2"] .fileWorkspaceGrid{overflow:hidden}
 html[data-main-ui="v2"] .fileTreePane,html[data-main-ui="v2"] .fileEditorPane{background:rgba(7,17,30,.48)}
+html[data-main-ui="v2"] .fileEditorBackdrop{display:none}
+html[data-main-ui="v2"] .fileEditorPane{display:none}
+html[data-main-ui="v2"] .workspaceEditorOpen .fileEditorBackdrop{display:block;position:fixed;z-index:40;inset:0;width:100%;height:100%;border:0;background:rgba(2,7,14,.68);backdrop-filter:blur(2px);cursor:default}
+html[data-main-ui="v2"] .workspaceEditorOpen .fileEditorPane{display:flex;position:fixed;z-index:41;inset:clamp(64px,10vh,120px) clamp(12px,8vw,140px) clamp(24px,8vh,96px);flex-direction:column;width:auto;min-height:0;max-height:none;margin:0;border:1px solid rgba(123,169,225,.32);border-radius:16px;background:#0b192b;box-shadow:0 24px 80px rgba(0,0,0,.48);overflow:hidden}
+html[data-main-ui="v2"] .workspaceEditorOpen .fileEditorPane .workspaceEditor{flex:1 1 auto;min-height:0;overflow:auto}
+html[data-main-ui="v2"] .workspaceEditorOpen .fileEditorPane .workspaceEditor textarea{height:100%;min-height:220px;resize:none}
 html[data-main-ui="v2"] .workspaceTree>*,html[data-main-ui="v2"] .workspaceAction,html[data-main-ui="v2"] .ghostBtn,html[data-main-ui="v2"] .verifyBtn{border-radius:10px}
 html[data-main-ui="v2"] .lowerGrid{gap:14px;margin-top:24px}
 html[data-main-ui="v2"] .lowerGrid>.card{padding:18px}

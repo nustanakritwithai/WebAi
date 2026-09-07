@@ -25,7 +25,9 @@
     input: root.querySelector("#workspaceEditorInput"),
     meta: root.querySelector("#workspaceEditorMeta"),
     save: root.querySelector("#saveWorkspaceFile"),
-    delete: root.querySelector("#deleteWorkspaceItem")
+    delete: root.querySelector("#deleteWorkspaceItem"),
+    close: root.querySelector("#closeWorkspaceEditor"),
+    backdrop: root.querySelector(".fileEditorBackdrop")
   };
 
   let db;
@@ -221,10 +223,29 @@
     if (!editable) {
       els.input.value = "";
       els.meta.textContent = selectedFolder ? `Folder selected · ${selectedFolder}` : "Select a text file to edit";
+      closeEditor();
       return;
     }
     els.input.value = item.content || "";
     els.meta.textContent = `Saved ${new Date(item.updatedAt).toLocaleString()}`;
+    openEditor();
+  }
+
+  function openEditor() {
+    root.classList.add("workspaceEditorOpen");
+    if (els.backdrop) {
+      els.backdrop.hidden = false;
+      els.backdrop.setAttribute("aria-hidden", "false");
+    }
+    els.close?.focus({ preventScroll: true });
+  }
+
+  function closeEditor() {
+    root.classList.remove("workspaceEditorOpen");
+    if (els.backdrop) {
+      els.backdrop.hidden = true;
+      els.backdrop.setAttribute("aria-hidden", "true");
+    }
   }
 
   async function createItem(type) {
@@ -470,6 +491,14 @@
   els.newFile.addEventListener("click", () => createItem("file").catch((error) => setStatus(error.message, "error")));
   els.save.addEventListener("click", () => saveFile().catch((error) => setStatus(error.message, "error")));
   els.delete.addEventListener("click", () => deleteSelected().catch((error) => setStatus(error.message, "error")));
+  els.close?.addEventListener("click", closeEditor);
+  els.backdrop?.addEventListener("click", closeEditor);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && root.classList.contains("workspaceEditorOpen")) {
+      event.preventDefault();
+      closeEditor();
+    }
+  });
   els.input.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();

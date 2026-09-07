@@ -6,6 +6,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const html = await readFile(resolve(root, "index.html"), "utf8");
 const uiSource = await readFile(resolve(root, "main-ui-v2.js"), "utf8");
 const uiCss = await readFile(resolve(root, "main-ui-v2.css"), "utf8");
+const workspaceSource = await readFile(resolve(root, "workspace.js"), "utf8");
 
 // This deliberately uses the HTML structure instead of looking for CSS class text.
 // It is small, dependency-free, and sufficient for the stable shell contract.
@@ -94,6 +95,9 @@ const filesTab = tablist && descendants(tablist, (node) => node.tag === "button"
 check("Files tab uses an unambiguous files destination", filesTab && (attr(filesTab, "data-tab") === "files" || attr(filesTab, "data-workspace-tab") === "files"), filesTab ? `data-tab=${attr(filesTab, "data-tab")} data-workspace-tab=${attr(filesTab, "data-workspace-tab")}` : "Files tab missing");
 check("workspace keeps matching Preview, Diff, and Tests panels", workspace && ["preview", "diff", "tests"].every((tab) => id(`tab-${tab}`) && id(`tab-${tab}`).parent === workspace.children.find((node) => node.type === "element" && attr(node, "class").includes("workspaceGrid"))?.children.find((node) => node.type === "element" && attr(node, "class").includes("tabStage"))));
 check("workspace includes file tree and editor hooks", workspace && id("workspaceTree")?.tag === "div" && id("workspaceEditor")?.tag === "div" && id("workspaceEditorInput")?.tag === "textarea");
+check("file details editor has an explicit close control", id("closeWorkspaceEditor")?.tag === "button");
+check("file details editor has dialog semantics", attr(id("workspaceEditorPath")?.parent?.parent?.parent, "role") === "dialog" && attr(id("workspaceEditorPath")?.parent?.parent?.parent, "aria-modal") === "true");
+check("file details editor supports overlay dismissal", /workspaceEditorOpen/.test(uiCss) && /Escape/.test(workspaceSource));
 check(
   "Browser Workspace is mounted into the Files tab stage",
   /files\s*&&\s*tabStage[\s\S]{0,260}tabStage\.appendChild\(files\)/.test(uiSource),

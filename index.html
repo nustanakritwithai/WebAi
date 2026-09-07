@@ -341,11 +341,12 @@
             <div id="workspaceTreeEmpty" class="workspaceTreeEmpty"><span>◇</span><b>No files yet</b><small>Create a folder or text file for the browser agent.</small></div>
           </aside>
 
-          <section class="fileEditorPane" aria-label="Workspace file editor">
+          <button class="fileEditorBackdrop" type="button" aria-label="Close file details" hidden></button>
+          <section class="fileEditorPane" role="dialog" aria-modal="true" aria-labelledby="workspaceEditorPath" aria-label="Workspace file details">
             <div class="fileEditorHead">
-              <div><span class="sectionKicker">EDITOR</span><h3 id="workspaceEditorPath">No file selected</h3></div>
+              <div><span class="sectionKicker">FILE DETAILS</span><h3 id="workspaceEditorPath">No file selected</h3></div>
               <div class="fileEditorActions">
-                <button id="saveWorkspaceFile" class="workspaceAction primary" type="button" disabled>Save</button>
+                <button id="closeWorkspaceEditor" class="workspaceAction" type="button">Close</button><button id="saveWorkspaceFile" class="workspaceAction primary" type="button" disabled>Save</button>
                 <button id="deleteWorkspaceItem" class="workspaceAction danger" type="button" disabled>Delete</button>
               </div>
             </div>
