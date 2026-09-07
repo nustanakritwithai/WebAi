@@ -71,6 +71,15 @@ async function openSession(clientId, token = pairingToken) {
   return { response, data: await response.json() };
 }
 
+async function openBrowserSession(clientId, origin = "https://nustanakritwithai.github.io") {
+  const response = await fetch(`http://127.0.0.1:${corePort}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: origin },
+    body: JSON.stringify({ clientId, autoSession: true }),
+  });
+  return { response, data: await response.json() };
+}
+
 async function coreRequest(path, sessionToken, method = "GET", body) {
   const headers = { "Content-Type": "application/json", "x-webai-session": sessionToken, Origin: "https://nustanakritwithai.github.io" };
   const response = await fetch(`http://127.0.0.1:${corePort}${path}`, {
@@ -119,6 +128,18 @@ try {
 
   const denied = await openSession("client_owner_000000000001", "wrong-token");
   if (denied.response.status !== 401 || denied.data.error !== "pairing_denied") throw new Error("pairing token rejection failed");
+
+  const browserSession = await openBrowserSession("browser_client_000000001");
+  if (browserSession.response.status !== 201
+    || browserSession.data.authMode !== "browser_origin"
+    || !browserSession.data.sessionToken
+    || browserSession.data.ownerId === "browser_client_000000001") {
+    throw new Error("origin-bound browser session failed");
+  }
+  const foreignBrowserSession = await openBrowserSession("browser_client_000000002", "https://example.invalid");
+  if (foreignBrowserSession.response.status !== 403 || foreignBrowserSession.data.error !== "origin_not_allowed") {
+    throw new Error("foreign-origin browser session was not denied");
+  }
 
   const ownerA = await openSession("client_owner_000000000001");
   if (ownerA.response.status !== 201 || !ownerA.data.sessionToken) throw new Error("owner A session failed");

@@ -33,6 +33,10 @@ function envBool(name, fallback = false) {
 }
 
 const NATIVE_ENABLED = envBool("WEBAI_NATIVE_WORKER_ENABLED", true);
+// The public WebAi page has no operator-entered pairing value.  It can request
+// a short-lived, origin-bound browser session by explicitly opting in below.
+// Pairing remains supported for non-browser clients and local operations.
+const BROWSER_AUTO_SESSION_ENABLED = envBool("WEBAI_CORE_BROWSER_SESSION_ENABLED", true);
 const snapshotStore = createSnapshotStore({ workspace: WORKSPACE, snapshotRoot: SNAPSHOT_DIR });
 const verificationEngine = createVerificationEngine({ workspace: WORKSPACE, snapshotStore });
 
@@ -71,6 +75,11 @@ function allowedOrigin(origin) {
   } catch {
     return false;
   }
+}
+
+function officialBrowserOrigin(origin) {
+  if (typeof origin !== "string") return false;
+  return SAFE_ORIGINS.has(origin.replace(/\/$/, ""));
 }
 
 function corsHeaders(req) {
@@ -283,15 +292,23 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/session") {
       if (!PAIRING_TOKEN || !SESSION_SECRET) return send(req, res, 503, { error: "core_auth_not_configured" });
       const body = await readJson(req);
-      if (!safeEqual(body?.pairingToken, PAIRING_TOKEN)) return send(req, res, 401, { error: "pairing_denied" });
       if (!validClientId(body?.clientId)) return send(req, res, 400, { error: "invalid_client_id" });
+      const paired = safeEqual(body?.pairingToken, PAIRING_TOKEN);
+      const browserAutoSession = body?.autoSession === true
+        && BROWSER_AUTO_SESSION_ENABLED
+        && officialBrowserOrigin(origin);
+      if (!paired && !browserAutoSession) return send(req, res, 401, { error: "pairing_denied" });
       const now = Math.floor(Date.now() / 1000);
       const exp = now + SESSION_TTL_SECONDS;
-      const payload = { v: 1, ownerId: body.clientId, iat: now, exp, sid: randomUUID() };
+      const ownerId = browserAutoSession
+        ? `browser-${createHash("sha256").update(`${origin}:${body.clientId}`).digest("hex").slice(0, 48)}`
+        : body.clientId;
+      const payload = { v: 1, ownerId, iat: now, exp, sid: randomUUID() };
       return send(req, res, 201, {
         sessionToken: signSession(payload),
         ownerId: payload.ownerId,
         expiresAt: new Date(exp * 1000).toISOString(),
+        authMode: browserAutoSession ? "browser_origin" : "paired",
       });
     }
 
