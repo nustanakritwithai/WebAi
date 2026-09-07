@@ -1,6 +1,9 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const BROWSER_AGENT_STORAGE_KEY = "webai.browserAgentTask";
+const CORE_BASE_URL = "https://157.85.96.139:5445";
+const CORE_SESSION_STORAGE_KEY = "webai.coreSession";
+const CORE_CLIENT_STORAGE_KEY = "webai.coreClientId";
 
 function readBrowserAgentTask() {
   try {
@@ -80,6 +83,10 @@ const els = {
 
 const state = {
   apiBase: localStorage.getItem("webai.apiBase") || "https://157.85.96.139:5444",
+  coreBase: CORE_BASE_URL,
+  coreConnected: false,
+  coreSession: null,
+  coreTask: null,
   connected: false,
   typhoonConfigured: false,
   ompEnabled: false,
@@ -184,6 +191,67 @@ function api(path) {
   return `${base}${path}`;
 }
 
+function coreApi(path) {
+  return `${state.coreBase.replace(/\/+$/, "")}${path}`;
+}
+
+function coreClientId() {
+  let clientId = localStorage.getItem(CORE_CLIENT_STORAGE_KEY);
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem(CORE_CLIENT_STORAGE_KEY, clientId);
+  }
+  return clientId;
+}
+
+function storedCoreSession() {
+  try {
+    const session = JSON.parse(localStorage.getItem(CORE_SESSION_STORAGE_KEY) || "null");
+    if (session?.sessionToken && Date.parse(session.expiresAt || "") > Date.now() + 60_000) return session;
+  } catch { /* A malformed cache is replaced by a new signed session. */ }
+  localStorage.removeItem(CORE_SESSION_STORAGE_KEY);
+  return null;
+}
+
+async function ensureCoreSession() {
+  const cached = storedCoreSession();
+  if (cached) {
+    state.coreSession = cached;
+    return cached;
+  }
+  const response = await fetch(coreApi("/api/session"), {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ clientId: coreClientId(), autoSession: true })
+  });
+  const session = await readJsonResponse(response);
+  state.coreSession = { sessionToken: session.sessionToken, expiresAt: session.expiresAt };
+  localStorage.setItem(CORE_SESSION_STORAGE_KEY, JSON.stringify(state.coreSession));
+  return state.coreSession;
+}
+
+async function coreRequest(path, body, timeoutMs = 190000) {
+  const session = await ensureCoreSession();
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const response = await fetch(coreApi(path), {
+      method: "POST",
+      headers: { ...headers(), "X-WebAi-Session": session.sessionToken },
+      body: JSON.stringify(body),
+      signal: ctl.signal
+    });
+    return await readJsonResponse(response);
+  } catch (error) {
+    if (error?.status === 401) {
+      localStorage.removeItem(CORE_SESSION_STORAGE_KEY);
+      state.coreSession = null;
+    }
+    if (error?.name === "AbortError") throw new Error("WebAi Core ใช้เวลาตอบนานเกินกำหนด");
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
 function headers() { return { "Content-Type": "application/json" }; }
 
 function setDot(el, kind = "idle") {
@@ -274,7 +342,7 @@ function setBusy(on, label = "กำลังทำงาน") {
 function applyActionState() {
   const mode = els.mode.value;
   const canTyphoon = state.connected && state.typhoonConfigured && !state.busy;
-  const canOmp = state.connected && state.ompEnabled && !state.busy;
+  const canOmp = state.coreConnected && state.ompEnabled && !state.busy;
   const hasGoal = !!els.input.value.trim();
 
   let enabled = false;
@@ -340,8 +408,11 @@ function setAgentError(message = "") {
 function updateAgentActions() {
   const task = state.agentTask;
   const isAgentMode = els.mode.value === "agent";
-  const canApprove = isAgentMode && !state.busy && task?.status === "awaiting_approval";
-  const canVerify = isAgentMode && !state.busy && task?.status === "awaiting_verification" && workspacePreviewState?.loaded;
+  const coreTask = state.coreTask;
+  const canApprove = (isAgentMode && !state.busy && task?.status === "awaiting_approval")
+    || (!state.busy && coreTask?.status === "awaiting_approval");
+  const canVerify = (isAgentMode && !state.busy && task?.status === "awaiting_verification" && workspacePreviewState?.loaded)
+    || (!state.busy && coreTask?.status === "awaiting_verification");
   if (els.approveExecution) els.approveExecution.disabled = !canApprove;
   if (els.verifyTask) els.verifyTask.disabled = !canVerify;
   if (els.runWorkspacePreview) els.runWorkspacePreview.disabled = !!state.busy;
@@ -361,6 +432,7 @@ function setConnectionWaiting() {
   state.connected = false;
   state.typhoonConfigured = false;
   state.ompEnabled = false;
+  state.coreConnected = false;
   setDot(els.systemDot, "warn");
   els.systemLabel.textContent = "รอ Backend";
   els.backendState.textContent = normalizedBase() ? "รอตรวจ" : "รอ URL";
@@ -491,6 +563,7 @@ async function health() {
     const data = await readJsonResponse(r);
     setConnected(data);
     log("Backend connected · secure OpenTyphoon proxy", "ok");
+    await coreHealth();
   } catch (e) {
     const message = e.name === "AbortError" ? "Backend ไม่ตอบภายใน 12 วินาที" : e.message;
     setConnectionFailed(message);
@@ -498,9 +571,33 @@ async function health() {
   } finally { clearTimeout(timer); }
 }
 
+async function coreHealth() {
+  try {
+    const response = await fetch(coreApi("/api/health"), { headers: headers() });
+    const data = await readJsonResponse(response);
+    state.coreConnected = data.ok === true && data.nativeWorkerConfigured === true;
+    state.ompEnabled = state.coreConnected;
+    setDot(els.ompStatusDot, state.ompEnabled ? "ok" : "idle");
+    setDot(els.teamOmp, state.ompEnabled ? "ok" : "idle");
+    els.ompState.textContent = state.ompEnabled ? "Core พร้อม" : "Core ไม่พร้อม";
+    els.teamOmpText.textContent = state.ompEnabled ? "Core ready" : "Core unavailable";
+    if (state.ompEnabled) log("WebAi Core connected · supervised OMP runtime ready", "ok");
+  } catch (error) {
+    state.coreConnected = false;
+    state.ompEnabled = false;
+    setDot(els.ompStatusDot, "idle");
+    setDot(els.teamOmp, "idle");
+    els.ompState.textContent = "Core ไม่พร้อม";
+    els.teamOmpText.textContent = "Core unavailable";
+    log(`WebAi Core unavailable · ${error.message}`, "bad");
+  }
+  applyActionState();
+}
+
 function makeTask(goal, mode) {
   state.taskId = `TASK-${String(Date.now()).slice(-6)}`;
   state.agentTask = null;
+  state.coreTask = null;
   localStorage.removeItem(BROWSER_AGENT_STORAGE_KEY);
   setAgentError("");
   updateAgentActions();
@@ -827,6 +924,7 @@ async function createBrowserAgentTask(goal) {
 }
 
 async function approveAgentExecution() {
+  if (state.coreTask) return approveCoreExecution();
   const task = state.agentTask;
   if (!task?.id || task.status !== "awaiting_approval" || state.busy) return;
   setAgentError("");
@@ -880,6 +978,7 @@ async function approveAgentExecution() {
 }
 
 async function verifyAgentTask() {
+  if (state.coreTask) return verifyCoreTask();
   const task = state.agentTask;
   if (!task?.id || task.status !== "awaiting_verification" || state.busy) return;
   setAgentError("");
@@ -1251,7 +1350,80 @@ async function callChat(goal, review = false, mode = "ask") {
   log(prepared.exact ? "Browser cache response restored" : "Typhoon response received", "ok");
   return data;
 }
-async function callOmp(goal) { if (!state.ompEnabled) throw new Error("OMP ยังไม่ได้เปิดบน Backend"); els.activeAgent.textContent = "OMP"; setProgress(2); addTimeline("Executing", "OMP กำลังทำงานกับ repository", "working"); log("Send task to OMP RPC"); const data = await request("/api/omp/prompt", { prompt: goal }, 190000); if (data.content) showPlan(data.content); addTimeline("OMP finished", data.content ? "Worker returned a result" : "agent_end", "ok"); log("OMP agent_end", "ok"); applyVerificationEvidence(data); return data; }
+function corePlanText(task) {
+  const plan = task?.plan;
+  if (!plan) return task?.goal || "Core กำลังเตรียมแผน";
+  const steps = Array.isArray(plan.steps) ? plan.steps.map((step, index) => `${index + 1}. ${step.title}${step.acceptance ? `\n   เกณฑ์: ${step.acceptance}` : ""}`).join("\n") : "";
+  const risks = Array.isArray(plan.risks) && plan.risks.length ? `\n\nความเสี่ยง:\n${plan.risks.map((risk) => `- ${risk}`).join("\n")}` : "";
+  return `${plan.summary || task.goal}\n\nขั้นตอน:\n${steps}${risks}`;
+}
+
+function applyCoreTask(task) {
+  state.coreTask = task;
+  state.taskId = task?.id || state.taskId;
+  els.currentTaskId.textContent = task?.id || "CORE TASK";
+  els.currentTaskGoal.textContent = task?.goal || els.currentTaskGoal.textContent;
+  els.currentTaskDetail.textContent = agentStatusLabel(task?.status);
+  els.activeAgent.textContent = task?.worker?.worker || "WebAi Core";
+  els.taskStatus.textContent = agentStatusLabel(task?.status);
+  els.taskStatus.className = ["failed", "verification_failed"].includes(task?.status) ? "pill bad" : task?.status === "completed" ? "pill ok" : "pill info";
+  if (task?.plan) showPlan(corePlanText(task));
+  if (task?.verification) applyAgentVerification(task.verification);
+  const latest = Array.isArray(task?.events) ? task.events.at(-1) : null;
+  if (latest) addTimeline(agentEventTitle(latest.type), agentEventDetail(latest), latest.type.includes("failed") ? "bad" : "ok");
+  updateAgentActions();
+}
+
+async function callOmp(goal) {
+  if (!state.coreConnected || !state.ompEnabled) throw new Error("WebAi Core ยังไม่พร้อม");
+  els.activeAgent.textContent = "WebAi OMP";
+  setProgress(1);
+  addTimeline("Core planning", "WebAi Core กำลังสร้างแผนที่รออนุมัติ", "working");
+  log("Create supervised Core task");
+  const data = await coreRequest("/api/tasks", { goal });
+  applyCoreTask(data.task);
+  state.busy = false;
+  els.currentTaskDetail.textContent = "Core plan พร้อมแล้ว — กด Approve เพื่อเริ่มงานใน workspace";
+  addTimeline("Core plan ready", "พร้อมอนุมัติ execution", "ok");
+  return data;
+}
+
+async function approveCoreExecution() {
+  const task = state.coreTask;
+  if (!task?.id || task.status !== "awaiting_approval" || state.busy) return;
+  state.busy = true;
+  setProgress(2);
+  addTimeline("Core execution approved", "กำลังใช้ OMP runtime กับ workspace", "working");
+  try {
+    const data = await coreRequest(`/api/tasks/${encodeURIComponent(task.id)}/approve`, {});
+    applyCoreTask(data.task);
+    els.currentTaskDetail.textContent = "Execution เสร็จแล้ว — กด Verify เพื่อรัน verification gates";
+  } catch (error) {
+    addTimeline("Core execution failed", error.message, "bad");
+    throw error;
+  } finally {
+    state.busy = false;
+    applyActionState();
+  }
+}
+
+async function verifyCoreTask() {
+  const task = state.coreTask;
+  if (!task?.id || task.status !== "awaiting_verification" || state.busy) return;
+  state.busy = true;
+  setProgress(3);
+  addTimeline("Core verification", "กำลังรัน verification gates", "working");
+  try {
+    const data = await coreRequest(`/api/tasks/${encodeURIComponent(task.id)}/verify`, {});
+    applyCoreTask(data.task);
+  } catch (error) {
+    addTimeline("Core verification failed", error.message, "bad");
+    throw error;
+  } finally {
+    state.busy = false;
+    applyActionState();
+  }
+}
 function applyVerificationEvidence(data) { if (!data || !data.verification) return; const entries = $$("#verificationList > div"); const order = ["build","unit","integration","browser","ecc","security","harpoon","regression"]; let passed = 0; order.forEach((key, i) => { const value = data.verification[key]; if (value == null || !entries[i]) return; const dot = entries[i].querySelector(".checkDot"); const label = entries[i].querySelector("em"); const ok = value === true || value === "pass" || value?.status === "pass"; dot.textContent = ok ? "✓" : "×"; dot.className = `checkDot ${ok ? "pass" : "fail"}`; label.textContent = ok ? "Passed" : "Failed"; if (ok) passed++; }); if (passed === order.length) { els.gateBadge.textContent = "READY"; els.gateBadge.className = "gateBadge pass"; els.gateMessage.textContent = "Verification Gate ผ่านครบ พร้อมสำหรับการอนุมัติ"; } }
 
 async function runTask() {
@@ -1274,9 +1446,9 @@ async function runTask() {
     if (mode === "plan") { await callPlan(goal); finishTask("แผนพร้อมแล้ว — ยังไม่ถือว่า DONE จนกว่าจะผ่าน Verification", true); return; }
     if (mode === "ask") { await callChat(goal, false, "ask"); finishTask("OpenTyphoon วิเคราะห์งานเสร็จแล้ว — รอ Verification", true); return; }
     if (mode === "review") { await callChat(goal, true, "review"); finishTask("Review พร้อมแล้ว — รอ Verification", true); return; }
-    if (mode === "execute") { await callOmp(goal); finishTask("OMP ส่งผลลัพธ์กลับแล้ว — รอ Verification", true); return; }
+    if (mode === "execute") { await callOmp(goal); return; }
     await callPlan(goal);
-    if (state.ompEnabled) { await callOmp(goal); finishTask("Auto run เสร็จขั้น Execute แล้ว — รอ Verification", true); }
+    if (state.ompEnabled) { await callOmp(goal); return; }
     else { await callChat(goal, false, "auto"); finishTask("Auto run ใช้ Typhoon สำเร็จ · OMP ยังปิด — รอ Verification", true); }
   } catch (e) {
     if (mode === "agent" && state.agentTask) {
@@ -1296,6 +1468,7 @@ function resetTask() {
   state.taskId = null;
   state.taskStart = null;
   state.agentTask = null;
+  state.coreTask = null;
   workspacePreviewState = null;
   window.WebAiBrowserWorkspace?.setActiveTask?.(null);
   localStorage.removeItem(BROWSER_AGENT_STORAGE_KEY);
