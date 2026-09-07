@@ -101,6 +101,12 @@
     const hashes = metadata?.expectedHashes || {};
     const revision = file?.expectedRevision ?? revisions[path];
     const hash = file?.expectedHash ?? hashes[path];
+    if (revision !== undefined && revision !== null && (!Number.isInteger(Number(revision)) || Number(revision) < 0)) {
+      throw new Error(`Invalid expected revision for ${path}.`);
+    }
+    if (hash !== undefined && hash !== null && !/^[a-f0-9]{64}$/i.test(String(hash))) {
+      throw new Error(`Invalid expected hash for ${path}.`);
+    }
     return {
       revision: revision === undefined || revision === null ? null : Number(revision),
       hash: typeof hash === "string" ? hash : null
@@ -538,6 +544,25 @@
     return readFiles(names.map((name) => `${folder}/${taskFileName(name)}`));
   }
 
+  async function readTaskFilesOptional(taskId, names) {
+    const folder = taskFolderForId(taskId);
+    if (!Array.isArray(names)) throw new Error("Task file names must be an array.");
+    const result = {};
+    for (const name of names) {
+      const path = `${folder}/${taskFileName(name)}`;
+      try {
+        Object.assign(result, await readFiles([path]));
+      } catch (error) {
+        if (/Workspace file not found:/i.test(String(error?.message || ""))) {
+          result[path] = null;
+          continue;
+        }
+        throw error;
+      }
+    }
+    return result;
+  }
+
   async function listTaskFiles(taskId) {
     const folder = taskFolderForId(taskId);
     if (!db) await ready;
@@ -647,6 +672,6 @@
   })();
   ready.catch(() => {});
 
-  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, rollbackFiles, listFiles, ensureTaskFolder, writeTaskFiles, readTaskFiles, listTaskFiles, readTaskContext, taskFolderForId, setActiveTask, revealActiveTask, getActiveTaskFolder: () => activeTaskFolder, subscribe, maxFileBytes: MAX_FILE_BYTES, maxTaskContextBytes: MAX_TASK_CONTEXT_BYTES, maxTaskContextFiles: MAX_TASK_CONTEXT_FILES };
+  window.WebAiBrowserWorkspace = { ready, readFiles, writeFiles, rollbackFiles, listFiles, ensureTaskFolder, writeTaskFiles, readTaskFiles, readTaskFilesOptional, listTaskFiles, readTaskContext, taskFolderForId, setActiveTask, revealActiveTask, getActiveTaskFolder: () => activeTaskFolder, subscribe, maxFileBytes: MAX_FILE_BYTES, maxTaskContextBytes: MAX_TASK_CONTEXT_BYTES, maxTaskContextFiles: MAX_TASK_CONTEXT_FILES };
   window.dispatchEvent(new CustomEvent("webai:workspace-ready"));
 })();

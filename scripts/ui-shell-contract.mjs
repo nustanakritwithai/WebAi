@@ -110,6 +110,11 @@ requireIdList("required supervised Agent controls remain present", ["approveExec
 check("required Agent controls remain actionable buttons", ["approveExecutionBtn", "verifyTaskBtn"].every((value) => id(value)?.tag === "button" && attr(id(value), "type") === "button"));
 check("current-task Continue control remains a button", id("continueCurrentTaskBtn")?.tag === "button" && attr(id("continueCurrentTaskBtn"), "type") === "button");
 check(
+  "Plan TODO keeps retry available for failed steps",
+  /steps\.find\(\(step\) => step\.status === ["']failed["']\)/.test(uiSource)
+    && /!\["blocked",\s*"done"\]\.includes\(next\.status\)/.test(uiSource),
+);
+check(
   "Continue binds independently after the V2 DOM move",
   /const continueButton\s*=\s*\$\(["']#continueCurrentTaskBtn["']\)[\s\S]{0,260}if\s*\(continueButton\s*&&\s*continueButton\.dataset\.uiBound\s*!==\s*["']true["']\)/.test(uiSource),
 );
@@ -124,6 +129,14 @@ check(
 check(
   "Continue prevents duplicate in-flight clicks",
   /continueButton\.dataset\.inFlight\s*===\s*["']true["'][\s\S]{0,120}return;[\s\S]{0,120}continueButton\.dataset\.inFlight\s*=\s*["']true["']/.test(uiSource),
+);
+check(
+  "sidebar HISTORY markup has a real renderer and resume binding",
+  id("sidebarTaskHistory")?.tag === "div"
+    && /function renderTaskHistory\(\)/.test(uiSource)
+    && /function installTaskHistory\(\)/.test(uiSource)
+    && /WebAiListBrowserTasks/.test(uiSource)
+    && /WebAiResumeBrowserTask/.test(uiSource),
 );
 check(
   "text zoom controls persist a bounded local font scale",

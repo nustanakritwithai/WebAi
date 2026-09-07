@@ -619,7 +619,10 @@
       const { planVersion, steps } = getPlanTodo(task);
       const running = ["planning", "executing", "applying", "previewing", "verifying"].includes(String(task?.status || ""));
       const requestedNext = steps.find((step) => step.id === String(task?.nextStepId || task?.handoff?.nextStepId || ""));
-      const next = requestedNext || steps.find((step) => step.status === "running") || steps.find((step) => step.status === "pending" && step.status !== "blocked");
+      const next = requestedNext
+        || steps.find((step) => step.status === "running")
+        || steps.find((step) => step.status === "failed")
+        || steps.find((step) => step.status === "pending");
       const doneCount = steps.filter((step) => step.status === "done").length;
       meta.textContent = steps.length ? `Plan v${planVersion} · ${doneCount}/${steps.length} เสร็จ · ${task?.status || "รอเริ่ม"}` : "ยังไม่มีขั้นตอนจากแผน";
       list.replaceChildren();
@@ -642,7 +645,7 @@
         item.append(marker, copy);
         list.appendChild(item);
       });
-      const canContinue = Boolean(next && !running && task && !["completed", "saved"].includes(String(task.status || "")) && !["blocked", "failed", "done"].includes(next.status));
+      const canContinue = Boolean(next && !running && task && !["completed", "saved"].includes(String(task.status || "")) && !["blocked", "done"].includes(next.status));
       nextButton.disabled = !canContinue;
       nextButton.textContent = running ? "กำลังทำขั้นปัจจุบัน…" : next ? `ทำต่อ: ${next.title} →` : "ทำต่อขั้นถัดไป →";
       nextButton.title = next?.status === "blocked" ? "ต้องทำ dependency ก่อน" : next?.status === "failed" ? "ขั้นนี้ล้มเหลว ให้ Continue เพื่อแก้ไข" : "ทำต่อผ่าน context ของ task เดิม";
