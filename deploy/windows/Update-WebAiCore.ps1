@@ -45,6 +45,17 @@ if ($task) {
     Start-Sleep -Seconds 2
 }
 
+# Stopping a Scheduled Task does not always terminate a child node.exe process.
+# Limit cleanup to the Core's exact startup command; never target unrelated Node
+# services on the host.
+$staleCoreProcesses = Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+    $_.Name -ieq 'node.exe' -and $_.CommandLine -match '(?i)(?:^|\s)server\\core\.mjs(?:\s|$)'
+}
+foreach ($process in $staleCoreProcesses) {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
+}
+if ($staleCoreProcesses) { Start-Sleep -Seconds 1 }
+
 New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
 foreach ($name in @('core.mjs', 'agent.mjs', 'native-worker.mjs', 'snapshot-store.mjs', 'core-recovery.mjs', 'diff-evidence.mjs', 'verification-engine.mjs')) {
     $destination = Join-Path $serverPath $name
