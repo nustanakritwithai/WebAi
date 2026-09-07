@@ -15,6 +15,8 @@ const checks = [
   ["generated files use revisioned IndexedDB records", workspace.includes('DB_VERSION = 2') && workspace.includes('REVISION_STORE_NAME') && workspace.includes('revisionsStore.put')],
   ["agent creates a deterministic task folder and plan artifact", core.includes("ensureTaskFolder") && core.includes('name: "PLAN.md"') && core.includes('name: "TASK.json"') && workspace.includes("/^BROWSER-[0-9]{8}$/")],
   ["agent artifacts stay inside the task folder", core.includes("writeTaskFiles") && core.includes("workspaceFolder") && workspace.includes("Task artifacts must stay inside their task folder")],
+  ["approved generation saves immediately without an Apply step", core.includes('task.status = "applying"') && core.includes("workspace.writeTaskFiles(task.id, files") && !core.includes("applyAgentFiles") && !html.includes("applyAgentFilesBtn")],
+  ["generated output is summarized instead of rendered as raw cards", core.includes("renderArtifactSummary") && !core.includes("showPlan(demo)") && html.includes("artifactSummary")],
   ["preview uses the current task folder files", core.includes('readTaskFiles(task.id, ["index.html", "style.css", "app.js"])') && core.includes("composeWorkspaceDocument")],
   ["preview is sandboxed without same-origin", core.includes('setAttribute("sandbox", "allow-scripts")') && !/setAttribute\("sandbox",\s*"[^\"]*allow-same-origin/i.test(core)],
   ["verification observes iframe load and runtime evidence", core.includes('iframe.addEventListener("load"') && core.includes("runtimeErrors") && core.includes("iframe_loaded")],
