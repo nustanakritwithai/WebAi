@@ -705,6 +705,14 @@ function applyAgentTask(task) {
   const progressByStatus = { planning: 1, awaiting_approval: 1, executing: 2, applying: 2, awaiting_preview: 3, previewing: 3, awaiting_verification: 3, verifying: 3, completed: 4, verification_failed: 3, failed: 1 };
   setProgress(Math.min(progressByStatus[task.status] ?? 1, 4), ["failed", "verification_failed"].includes(task.status));
   if (task.plan) showPlan(task.plan);
+  else {
+    if (els.planBox) {
+      els.planBox.replaceChildren();
+      els.planBox.classList.add("hidden");
+      els.planBox.classList.remove("hasCodeCards");
+    }
+    if (els.planEmpty) els.planEmpty.classList.remove("hidden");
+  }
   if (task.worker?.content) showPlan(task.worker.content);
   renderArtifactSummary(task);
   if (Array.isArray(task.events)) {
@@ -847,15 +855,18 @@ async function requestBrowserAgentChat(messages, memoryMode, taskId = state.agen
   const outboundMessages = await providerMessages(prepared.prompt, relatedContext, prepared.ecc, { system: agentSystem, history: agentHistory, mode: memoryMode });
   let data;
   let answer;
-  if (prepared.exact) {
+  const allowCachedAgentReply = memoryMode !== "browser-demo";
+  if (prepared.exact && allowCachedAgentReply) {
     answer = prepared.exact.answer;
     data = { choices: [{ message: { content: answer } }], cached: true };
     log("Browser Agent ใช้ exact local cache", "ok");
   } else {
-    data = await request("/api/typhoon/chat", { messages: outboundMessages, temperature: 0.2, max_tokens: 4096 }, 190000);
+    data = await request("/api/typhoon/chat", { messages: outboundMessages, temperature: 0.2, max_tokens: memoryMode === "browser-demo" ? BROWSER_DEMO_MAX_TOKENS : 4096 }, 190000);
+    if (data?.choices?.[0]?.finish_reason === "length") throw new Error("การตอบกลับถูกตัดตอนกลางจากข้อจำกัด token; ลองลดความซับซ้อนของงานหรือลองใหม่");
     answer = typhoonAnswer(data);
   }
-  const safeAnswer = await safeMemoryText(answer);
+  const answerText = String(answer || "(ไม่มีข้อความตอบกลับ)");
+  const safeAnswer = await safeMemoryText(answerText);
   if (browserMemory?.supported?.()) {
     try {
       const saved = await browserMemory.recordExchange({ user: prepared.prompt, answer: safeAnswer, mode: memoryMode, model: els.model.textContent || "OpenTyphoon", ecc: prepared.ecc, task: currentMemoryTask(state.agentTask?.status || "working", "Browser Agent response", "ทำขั้นตอน Browser Agent ต่อ") });
@@ -864,10 +875,12 @@ async function requestBrowserAgentChat(messages, memoryMode, taskId = state.agen
       state.messages = [...state.messages, { role: "user", content: prepared.prompt }, { role: "assistant", content: safeAnswer }].slice(-48);
     }
   }
-  return { ...data, choices: [{ message: { content: safeAnswer } }] };
+  const resolvedChoice = data?.choices?.[0] || {};
+  return { ...data, choices: [{ ...resolvedChoice, message: { ...resolvedChoice.message, content: memoryMode === "browser-demo" ? answerText : safeAnswer } }] };
 }
 const AGENT_FILE_LIMIT = 100_000;
 const AGENT_TOTAL_FILE_LIMIT = 240_000;
+const BROWSER_DEMO_MAX_TOKENS = 12_000;
 const UNSAFE_PREVIEW_PATTERNS = [
   [/(?:https?:|wss?:|ftp:)[^\s"'<>]*/i, "external URLs are not allowed"],
   [/(?:data:|blob:|javascript:)/i, "external or executable URL schemes are not allowed"],
@@ -891,7 +904,19 @@ function validatePreviewCode(code, language) {
   for (const [pattern, reason] of UNSAFE_PREVIEW_PATTERNS) {
     if (pattern.test(code)) throw new Error(`Preview blocked: ${reason}.`);
   }
-  if (language === "html" && /<\s*script\b/i.test(code)) throw new Error("Preview blocked: put JavaScript in app.js, not inside index.html.");
+  if (language === "html") {
+    const scriptTags = code.match(/<\s*script\b[\s\S]*?<\/script>/gi) || [];
+    if (scriptTags.length) {
+      const invalidScript = scriptTags.find((tag) => {
+        const src = String(tag.match(/src\s*=\s*["']([^"']+)["']/i)?.[1] || "").trim();
+        if (!src) return true;
+        return !/^(?:\.\/)?app\.js(?:\?.*)?$/i.test(src);
+      });
+      if (invalidScript) throw new Error("Preview blocked: only external script reference allowed is ./app.js and no inline JS in index.html.");
+      const inlineScript = scriptTags.some((tag) => !/src\s*=\s*["'][^"']+["']/i.test(tag));
+      if (inlineScript) throw new Error("Preview blocked: inline <script> blocks are not allowed. Put JavaScript in app.js.");
+    }
+  }
   return code;
 }
 
@@ -1023,7 +1048,10 @@ async function createBrowserAgentTask(goal, mode = "agent") {
     events: [{ type: "task_created", at: new Date().toISOString() }],
     plan: null,
     demo: null,
+    error: "",
     verification: null,
+    lastFailureStage: "",
+    appliedFiles: [],
     localOnly: true
   };
   state.agentTask = task;
@@ -1068,8 +1096,11 @@ async function continueBrowserAgentTask(goal, mode = "agent") {
   task.latestCommand = goal;
   task.goalHistory = Array.isArray(task.goalHistory) ? [...task.goalHistory, goal].slice(-12) : [task.goal, goal];
   task.status = "planning";
+  task.error = "";
+  task.lastFailureStage = "";
   task.plan = null;
   task.demo = null;
+  task.appliedFiles = [];
   task.preview = null;
   task.verification = null;
   workspacePreviewState = null;
@@ -1114,11 +1145,13 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
   applyActionState();
   try {
     const data = await requestBrowserAgentChat([
-      { role: "system", content: "You are Browser Agent through the existing Host A OpenTyphoon proxy. Return a runnable browser demo for the approved goal. Include all three separate fenced code blocks, exactly labeled ```html, ```css, and ```javascript. You may include one optional ```markdown block for README.md. Keep it self-contained with no external URLs, network calls, backend calls, repository edits, filesystem edits, server/workspace tests, or native workers. Add a short usage note outside the fences. The validated artifacts will be saved into the current browser task folder; do not assume they are applied anywhere else." },
+      { role: "system", content: "You are Browser Agent through the existing Host A OpenTyphoon proxy. Return a runnable browser demo for the approved goal. Include all three separate fenced code blocks, exactly labeled ```html, ```css, and ```javascript. In index.html, keep HTML/CSS separated (no inline JS), and include `<script src=\"app.js\"></script>` when loading JavaScript. You may include one optional ```markdown block for README.md. Keep it self-contained with no external URLs, network calls, backend calls, repository edits, filesystem edits, server/workspace tests, or native workers. Add a short usage note outside the fences. The validated artifacts will be saved into the current browser task folder; do not assume they are applied anywhere else." },
       { role: "user", content: `Approved task goal:\n${task.goal}\n\nApproved request:\n${task.latestCommand || task.goal}\n\nApproved plan:\n${task.plan}` }
     ], "browser-demo", task.id);
     const demo = typhoonAnswer(data);
     const files = browserDemoFiles(demo);
+    task.error = "";
+    task.lastFailureStage = "";
     task.demo = demo;
     task.status = "applying";
     addBrowserAgentEvent("demo_ready", "Model output validated; saving approved artifacts to the task folder");
@@ -1138,7 +1171,13 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
     selectTab("plan");
   } catch (error) {
     setAgentError(agentErrorMessage(error, "สร้างและบันทึกไฟล์ไม่สำเร็จ"));
+    task.error = error?.message || "Unknown error";
+    task.lastFailureStage = "artifact_generation";
     task.status = "failed";
+    task.appliedFiles = [];
+    task.preview = null;
+    task.verification = null;
+    applyAgentTask(task);
     saveBrowserAgentTask();
     addTimeline("Demo generation failed", error.message, "bad");
     log(`Browser demo failed · ${error.message}`, "bad");
@@ -1291,7 +1330,11 @@ function previewToken() {
 function composeWorkspaceDocument(files, token) {
   const index = validatePreviewCode(files["index.html"], "html")
     .replace(/<\s*link\b[^>]*\bhref\s*=\s*["'][^"']*style\.css[^"']*["'][^>]*>/gi, "");
-  if (/<\s*link\b/i.test(index)) throw new Error("Preview blocked: external stylesheet links are not allowed.");
+  const normalizedIndex = index
+    .replace(/<\s*script\b[^>]*\bsrc\s*=\s*["'](?:\.\/)?app\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gi, "")
+    .replace(/<\s*script\b[^>]*\bsrc\s*=\s*["'](?:\.\/)?app\.js(?:\?[^"']*)?["'][^>]*\/>/gi, "")
+    .trim();
+  if (/<\s*link\b/i.test(normalizedIndex)) throw new Error("Preview blocked: external stylesheet links are not allowed.");
   const css = validatePreviewCode(files["style.css"], "css");
   const app = validatePreviewCode(files["app.js"], "javascript");
   const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; font-src data:; media-src data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; navigate-to 'none'; popup: 'none'; download: 'none';";
@@ -1299,14 +1342,14 @@ function composeWorkspaceDocument(files, token) {
   const runtime = `<script>window.__webaiPreviewErrors=[];window.addEventListener('error',function(e){window.__webaiPreviewErrors.push(String(e.message||'runtime error'));window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:String(e.message||'runtime error')},'*');});window.addEventListener('unhandledrejection',function(e){var message=String(e.reason?.message||e.reason||'unhandled rejection');window.__webaiPreviewErrors.push(message);window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'error',message:message},'*');});window.addEventListener('load',function(){window.parent.postMessage({type:'webai-preview-runtime',token:${JSON.stringify(token)},kind:'ready'},'*');});</script>`;
   const style = `<style>${escapePreviewMarkup(css, "style")}</style>`;
   const script = `<script>${escapePreviewMarkup(app, "script")}</script>`;
-  if (/<\s*html\b/i.test(index)) {
-    let documentMarkup = index;
+  if (/<\s*html\b/i.test(normalizedIndex)) {
+    let documentMarkup = normalizedIndex;
     if (/<\/head>/i.test(documentMarkup)) documentMarkup = documentMarkup.replace(/<\/head>/i, `${meta}${style}</head>`);
     else documentMarkup = documentMarkup.replace(/<\s*html\b[^>]*>/i, (match) => `${match}<head>${meta}${style}</head>`);
     if (/<\/body>/i.test(documentMarkup)) return documentMarkup.replace(/<\/body>/i, `${runtime}${script}</body>`);
     return `${documentMarkup}${runtime}${script}`;
   }
-  return `<!doctype html><html><head>${meta}${style}</head><body>${index}${runtime}${script}</body></html>`;
+  return `<!doctype html><html><head>${meta}${style}</head><body>${normalizedIndex}${runtime}${script}</body></html>`;
 }
 
 async function runWorkspacePreview() {

@@ -4,5 +4,5 @@ const version = String(process.argv[2] || "dev").replace(/[^a-zA-Z0-9._-]/g, "")
 const indexPath = new URL("../index.html", import.meta.url);
 let html = await readFile(indexPath, "utf8");
 
-html = html.replace(/(\b(?:href|src)=(["'])\.\/(?:styles\.css|semantic\.css|app\.js|workspace\.js)\2)(?:\?v=[^"']*)?/g, `$1?v=${version}`);
+html = html.replace(/(\b(?:href|src)=)(["'])(\.\/(?:styles\.css|semantic\.css|app\.js|workspace\.js))(?:\?[^"']*)?\2/g, `$1$2$3?v=${version}$2`);
 await writeFile(indexPath, html);
