@@ -942,14 +942,14 @@ function validatePreviewCode(code, language) {
     if (formTags.some((tag) => /\b(?:action|formaction|method|target)\s*=/i.test(tag))) throw new Error("Preview blocked: forms cannot specify action, method, target, or formaction.");
     const scriptTags = code.match(/<\s*script\b[\s\S]*?<\/script>/gi) || [];
     if (scriptTags.length) {
+      const inlineScript = scriptTags.some((tag) => !/src\s*=\s*["'][^"']+["']/i.test(tag));
+      if (inlineScript) throw new Error("Preview blocked: inline <script> blocks are not allowed. Put JavaScript in app.js.");
       const invalidScript = scriptTags.find((tag) => {
         const src = String(tag.match(/src\s*=\s*["']([^"']+)["']/i)?.[1] || "").trim();
         if (!src) return true;
         return !/^(?:\.\/)?app\.js(?:\?.*)?$/i.test(src);
       });
       if (invalidScript) throw new Error("Preview blocked: only external script reference allowed is ./app.js and no inline JS in index.html.");
-      const inlineScript = scriptTags.some((tag) => !/src\s*=\s*["'][^"']+["']/i.test(tag));
-      if (inlineScript) throw new Error("Preview blocked: inline <script> blocks are not allowed. Put JavaScript in app.js.");
     }
   }
   return code;
@@ -1003,11 +1003,28 @@ function parseArtifactManifest(text) {
   return { files, artifactKind: ["index.html", "style.css", "app.js"].every((name) => browserNames.has(name)) ? "browser" : "document" };
 }
 
+const BROWSER_ARTIFACT_MANIFEST = [
+  { name: "index.html", kind: "html" },
+  { name: "style.css", kind: "css" },
+  { name: "app.js", kind: "javascript" }
+];
+
+function isDocumentOnlyRequest(task) {
+  const request = `${task?.goal || ""}\n${task?.latestCommand || ""}`.toLowerCase();
+  const asksForDocument = /(?:\b(?:document|docx?|markdown|readme|text file)\b|เอกสาร|ไฟล์ข้อความ|เขียนแผน)/i.test(request);
+  const asksForBrowser = /(?:\b(?:web|website|page|todo|app|html|css|javascript|code)\b|เว็บ|เว็บไซต์|หน้า|โค้ด|แอป)/i.test(request);
+  return asksForDocument && !asksForBrowser;
+}
+
+function normalizeBrowserScriptReference(code) {
+  return String(code || "").replace(/(<\s*script\b[^>]*\bsrc\s*=\s*["'])(?:\.\/)?[A-Za-z0-9_-]+\.js(?:\?[^"']*)?(["'][^>]*>\s*<\/script\s*>)/gi, "$1app.js$2");
+}
+
 function artifactFileContent(text, file) {
   const aliases = file.kind === "javascript" ? ["javascript", "js"] : [file.kind];
   const block = (fencedBlocks(text) || []).find((entry) => aliases.includes(String(entry.language || "").toLowerCase()));
   if (!block?.code?.trim()) throw new Error(`คำตอบสำหรับ ${file.name} ต้องมี code fence ภาษา ${aliases[0]}`);
-  const content = block.code;
+  const content = file.name === "index.html" ? normalizeBrowserScriptReference(block.code) : block.code;
   if (file.kind === "markdown" || file.kind === "text") {
     if (utf8Bytes(content) > AGENT_FILE_LIMIT) throw new Error(`${file.name} is larger than ${AGENT_FILE_LIMIT.toLocaleString()} bytes.`);
   } else validatePreviewCode(content, file.kind);
@@ -1235,12 +1252,16 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
     const workspace = await getBrowserWorkspace();
     task.workspaceFolder = task.workspaceFolder || workspace.taskFolderForId(task.id);
     if (!Array.isArray(task.artifactManifest) || !task.artifactManifest.length) {
-      const manifestResponse = await requestBrowserAgentChat([
-        { role: "system", content: "Return only compact JSON: {\"files\":[{\"name\":\"...\"}]}. Pick the smallest useful file list. Runnable browser apps must include index.html, style.css, and app.js. Document-only work uses .md or .txt. Relative paths only, no code, no markdown fences, no explanation." },
-        { role: "user", content: `Goal: ${task.goal}\nRequest: ${task.latestCommand || task.goal}\nPlan: ${planText(task.plan)}` }
-      ], "browser-manifest", task.id, { maxTokens: 700 });
-      if (!isCurrentGeneration(task, generationId)) return;
-      const manifest = parseArtifactManifest(typhoonAnswer(manifestResponse));
+      const documentOnly = isDocumentOnlyRequest(task);
+      let manifest = documentOnly ? null : { files: BROWSER_ARTIFACT_MANIFEST.slice(), artifactKind: "browser" };
+      if (documentOnly) {
+        const manifestResponse = await requestBrowserAgentChat([
+          { role: "system", content: "Return only compact JSON: {\"files\":[{\"name\":\"...\"}]}. This is a document-only request, so use .md or .txt files. Relative paths only, no code, no markdown fences, no explanation." },
+          { role: "user", content: `Goal: ${task.goal}\nRequest: ${task.latestCommand || task.goal}\nPlan: ${planText(task.plan)}` }
+        ], "browser-manifest", task.id, { maxTokens: 700 });
+        if (!isCurrentGeneration(task, generationId)) return;
+        manifest = parseArtifactManifest(typhoonAnswer(manifestResponse));
+      }
       task.artifactManifest = manifest.files;
       task.artifactKind = manifest.artifactKind;
       task.artifactProgress = { pending: manifest.files.slice(), saved: [] };
@@ -1258,7 +1279,7 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
       if (!isCurrentGeneration(task, generationId)) return;
       const file = task.artifactProgress.pending[0];
       const requestFile = (repairError = "") => requestBrowserAgentChat([
-        { role: "system", content: `Create only ${file.name}. Return exactly one fenced ${file.kind} block containing its full content, with no explanation. Keep it concise. No external URLs, network calls, backend calls, repository edits, filesystem operations, server tests, or native workers. Use local in-memory data and DOM events only. For browser index.html, use <script src=\"app.js\"></script> and no inline JavaScript.${repairError ? ` The previous version was rejected: ${repairError}. Correct that exact issue.` : ""}` },
+        { role: "system", content: `Create only ${file.name}. Return exactly one fenced ${file.kind} block containing its full content, with no explanation. Keep it concise. No external URLs, network calls, backend calls, repository edits, filesystem operations, server tests, or native workers. Use local in-memory data and DOM events only. For browser index.html, include exactly one local <script src=\"app.js\"></script> reference and no inline JavaScript.${repairError ? ` The previous version was rejected: ${repairError}. Correct that exact issue.` : ""}` },
         { role: "user", content: `Goal: ${task.goal}\nRequest: ${task.latestCommand || task.goal}\nPlan: ${planText(task.plan)}\nTarget: ${file.name}` }
       ], "browser-artifact", task.id, { maxTokens: 3500 });
       let response = await requestFile();
