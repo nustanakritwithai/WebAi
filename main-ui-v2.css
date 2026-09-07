@@ -149,6 +149,24 @@ html[data-main-ui="v2"] .appShell{display:grid;grid-template-columns:240px minma
 html[data-main-ui="v2"] .rail{box-sizing:border-box;width:auto;min-width:0;height:100%;overflow-y:auto;overflow-x:hidden;padding:18px 12px 22px;scrollbar-gutter:stable;background:linear-gradient(180deg,rgba(9,19,33,.92),rgba(6,14,25,.86));}
 html[data-main-ui="v2"] .railGroup{min-width:0}
 html[data-main-ui="v2"] .railItem{width:100%;box-sizing:border-box}
+html[data-main-ui="v2"] .railActionGroup{margin:8px 0 2px}
+html[data-main-ui="v2"] .railNewTask{justify-content:flex-start;border:1px solid rgba(106,168,255,.3);background:linear-gradient(135deg,rgba(80,137,231,.25),rgba(105,88,213,.18));color:#e6f0ff;box-shadow:0 8px 24px rgba(45,91,170,.14)}
+html[data-main-ui="v2"] .railNewTask:hover{border-color:rgba(126,184,255,.62);background:linear-gradient(135deg,rgba(80,137,231,.38),rgba(105,88,213,.28))}
+html[data-main-ui="v2"] .railNewTask span{background:rgba(107,168,255,.22);color:#d9eaff;font-size:20px;line-height:1}
+html[data-main-ui="v2"] .railTitleRow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+html[data-main-ui="v2"] .railTitleRow .railTitle{margin-bottom:0}
+html[data-main-ui="v2"] .railTitleRow>em{font-style:normal;font-size:10px;color:#9cc8ff;background:rgba(60,111,179,.25);border:1px solid rgba(107,168,255,.18);border-radius:999px;padding:2px 7px}
+html[data-main-ui="v2"] .sidebarTaskHistory{display:grid;gap:4px;min-width:0;max-height:240px;overflow:auto}
+html[data-main-ui="v2"] .sidebarTaskHistoryItem{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:7px;width:100%;min-height:46px;padding:7px 8px;border:1px solid transparent;border-radius:10px;background:transparent;color:#a9bad3;text-align:left;cursor:pointer}
+html[data-main-ui="v2"] .sidebarTaskHistoryItem:hover,html[data-main-ui="v2"] .sidebarTaskHistoryItem:focus-visible{border-color:rgba(106,168,255,.25);background:rgba(75,126,205,.14);color:#edf5ff}
+html[data-main-ui="v2"] .sidebarTaskHistoryItem.is-current{border-color:rgba(84,215,191,.22);background:rgba(53,146,132,.12);color:#e6fff8}
+html[data-main-ui="v2"] .sidebarTaskHistoryIcon{color:#7594bb;font-size:11px;text-align:center}
+html[data-main-ui="v2"] .sidebarTaskHistoryCopy{display:grid;min-width:0;gap:2px}
+html[data-main-ui="v2"] .sidebarTaskHistoryTitle,html[data-main-ui="v2"] .sidebarTaskHistoryMeta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html[data-main-ui="v2"] .sidebarTaskHistoryTitle{font-size:11px;font-weight:800}
+html[data-main-ui="v2"] .sidebarTaskHistoryMeta{font-size:9px;color:#7187a7}
+html[data-main-ui="v2"] .sidebarTaskHistoryAction{font-size:9px;color:#7ca7d7;white-space:nowrap}
+html[data-main-ui="v2"] .sidebarTaskHistoryEmpty{padding:9px 8px;color:#687d9c;font-size:10px;border:1px dashed rgba(115,145,184,.18);border-radius:9px}
 html[data-main-ui="v2"] .main{box-sizing:border-box;width:auto;min-width:0;height:100%;min-height:0;overflow:hidden;padding:0;background:rgba(8,18,32,.5)}
 html[data-main-ui="v2"] .mainHeroV2,html[data-main-ui="v2"] .overviewBar,html[data-main-ui="v2"] .systemStripV2{max-width:none}
 

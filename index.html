@@ -100,6 +100,15 @@
         <b>WebAi</b>
         <small id="sidebarTaskState">No active task</small>
       </div>
+      <div class="railGroup railActionGroup" data-shell-hook="new-task">
+        <button id="newTaskControl" class="railItem railButton railNewTask" type="button">
+          <span>＋</span><b>New Task</b>
+        </button>
+      </div>
+      <div class="railGroup railHistoryGroup" data-shell-hook="task-history">
+        <div class="railTitleRow"><span class="railTitle">HISTORY</span><em id="sidebarHistoryCount">0</em></div>
+        <div id="sidebarTaskHistory" class="sidebarTaskHistory" aria-live="polite"></div>
+      </div>
       <div class="railGroup">
         <span class="railTitle">WORKSPACE</span>
         <a class="railItem active" href="#home"><span>⌂</span><b>Home</b></a>
@@ -204,7 +213,6 @@
           <div><span class="sectionKicker">CURRENT TASK</span><h2>งานที่กำลังทำ</h2></div>
           <div class="sectionActions">
             <button id="continueCurrentTaskBtn" class="ghostBtn" type="button">Continue current task <span>→</span></button>
-            <button id="newTaskControl" class="primary" type="button">＋ New Task</button>
             <button id="clearTaskBtn" class="ghostBtn" type="button">Clear</button>
           </div>
         </div>
