@@ -287,3 +287,77 @@ html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane{
     padding:12px;
   }
 }
+
+/* Desktop shell contract. Keep this block last so it safely wins over the
+   legacy two-column appShell rules in styles.css and the older responsive
+   rules above. The runtime inserts .workspacePane as the third grid child. */
+@media(min-width:901px){
+  html[data-main-ui="v2"][data-shell="three-pane"],
+  html[data-main-ui="v2"][data-shell="three-pane"] body{
+    height:100%;
+    min-height:100%;
+    overflow:hidden;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell{
+    display:grid !important;
+    grid-template-columns:minmax(200px,240px) minmax(280px,1fr) minmax(280px,min(var(--shell-right,520px),42vw)) !important;
+    grid-template-rows:minmax(0,1fr) !important;
+    width:100%;
+    height:calc(100dvh - 64px) !important;
+    min-height:0 !important;
+    max-height:calc(100dvh - 64px);
+    overflow:hidden !important;
+    padding:0 !important;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell > .rail,
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell > .main,
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell > .workspacePane{
+    grid-row:1;
+    min-width:0 !important;
+    min-height:0 !important;
+    height:100% !important;
+    max-height:100%;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell > .rail{
+    grid-column:1;
+    position:relative;
+    width:auto !important;
+    overflow-x:hidden !important;
+    overflow-y:auto !important;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell > .main{
+    grid-column:2;
+    width:auto !important;
+    max-width:none !important;
+    margin:0 !important;
+    padding:0 !important;
+    overflow-x:hidden !important;
+    overflow-y:auto !important;
+    overscroll-behavior:contain;
+    scrollbar-gutter:stable;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .appShell > .workspacePane{
+    grid-column:3;
+    display:block !important;
+    width:auto !important;
+    overflow-x:hidden !important;
+    overflow-y:auto !important;
+    overscroll-behavior:contain;
+    scrollbar-gutter:stable;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .conversationPane{
+    box-sizing:border-box;
+    min-width:0;
+    min-height:100%;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > *{
+    min-width:0;
+  }
+}

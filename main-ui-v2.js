@@ -140,6 +140,46 @@
     reveal.setAttribute("aria-expanded", "true");
     header?.appendChild(reveal);
     wireShellControls({ root, rail, workspacePane, workspace, files, menu, toggle, reveal, resize, chatButton, workspaceButton });
+    enforcePaneLayout({ appShell, rail, main, workspacePane });
+  }
+
+  function enforcePaneLayout({ appShell, rail, main, workspacePane }) {
+    if (!appShell || !rail || !main || !workspacePane) return;
+
+    // The legacy stylesheet collapses the shell to one column below 1200px.
+    // Keep that responsive behavior for phones, but explicitly preserve the
+    // desktop shell for laptops/tablets that still have room for three panes.
+    const apply = () => {
+      const desktop = window.innerWidth > 900;
+      if (desktop) {
+        if (appShell.firstElementChild !== rail || rail.nextElementSibling !== main || main.nextElementSibling !== workspacePane) {
+          appShell.append(rail, main, workspacePane);
+        }
+        appShell.style.display = "grid";
+        appShell.style.gridTemplateColumns = "var(--shell-left, 240px) minmax(360px, 1fr) var(--shell-right, 520px)";
+        appShell.style.gridTemplateRows = "minmax(0, 1fr)";
+        appShell.style.height = "calc(100dvh - 64px)";
+        appShell.style.minHeight = "0";
+        appShell.style.overflow = "hidden";
+        rail.style.gridColumn = "1";
+        main.style.gridColumn = "2";
+        workspacePane.style.gridColumn = "3";
+        [rail, main, workspacePane].forEach((pane) => {
+          pane.style.gridRow = "1";
+          pane.style.minWidth = "0";
+          pane.style.minHeight = "0";
+        });
+        return;
+      }
+
+      // Let the existing mobile drawer and Chat/Workspace rules take over.
+      [appShell, rail, main, workspacePane].forEach((node) => {
+        ["display", "grid-template-columns", "grid-template-rows", "height", "min-height", "overflow", "grid-column", "grid-row", "min-width"].forEach((property) => node.style.removeProperty(property));
+      });
+    };
+
+    apply();
+    window.addEventListener("resize", apply, { passive: true });
   }
 
   function setWorkspaceView({ root, workspacePane, workspace, files }, view) {

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const html = await readFile(resolve(root, "index.html"), "utf8");
 const uiSource = await readFile(resolve(root, "main-ui-v2.js"), "utf8");
+const uiCss = await readFile(resolve(root, "main-ui-v2.css"), "utf8");
 
 // This deliberately uses the HTML structure instead of looking for CSS class text.
 // It is small, dependency-free, and sufficient for the stable shell contract.
@@ -103,6 +104,18 @@ requireIdList("task identity hooks remain present", ["currentTaskId", "currentTa
 requireIdList("workspace identity and persistence hooks remain present", ["workspaceCurrentFolder", "workspaceStatus", "workspaceTree", "workspaceEditorPath", "workspaceEditorInput", "saveWorkspaceFile", "deleteWorkspaceItem"]);
 check("workspace scripts are loaded after the document structure", /<script[^>]+src=["']\.\/workspace\.js\?v=[^"']+["'][^>]*defer/i.test(html));
 check("shell keeps the hero two-column composition when docking the composer", !/conversation\.appendChild\(hero\);[\s\S]{0,260}if \(composer\) \{[\s\S]{0,120}dock\.appendChild\(composer\)/.test(uiSource));
+
+// The shell must remain horizontal on desktop. A viewport below this contract's
+// tablet breakpoint intentionally becomes a single active pane, but the desktop
+// rule must explicitly provide left rail + center chat + right workspace tracks.
+check(
+  "desktop shell declares three horizontal pane tracks",
+  /html\[data-main-ui="v2"\]\[data-shell="three-pane"\]\s*\.appShell\s*\{[\s\S]{0,260}?grid-template-columns\s*:\s*[^;]+\s+[^;]+\s+[^;]+\s*;/i.test(uiCss),
+);
+check(
+  "desktop shell keeps center chat and right workspace as direct regions",
+  /html\[data-shell="three-pane"\]\s+\.appShell[\s\S]{0,240}?grid-template-columns\s*:\s*var\(--shell-left\)\s+minmax\(360px,\s*1fr\)\s+var\(--shell-right\)/i.test(html),
+);
 
 const duplicateIds = [...new Set(all.map((node) => attr(node, "id")).filter(Boolean))].filter((value) => all.filter((node) => attr(node, "id") === value).length > 1);
 check("DOM ids are unique for stable JavaScript hooks", duplicateIds.length === 0, duplicateIds.join(", "));
