@@ -61,7 +61,9 @@ try {
   }
 
   const rateStatuses = [];
-  for (let requestNumber = 0; requestNumber < 31; requestNumber += 1) {
+  // A minute rollover between requests resets the server's minute bucket. Run
+  // enough requests to cross at most one boundary while still proving 429 occurs.
+  for (let requestNumber = 0; requestNumber < 62; requestNumber += 1) {
     const response = await fetch(`http://127.0.0.1:${port}/api/typhoon/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Forwarded-For": "proxy-rate-test" },
@@ -69,7 +71,7 @@ try {
     });
     rateStatuses.push(response.status);
   }
-  if (rateStatuses.slice(0, 30).some((status) => status !== 400) || rateStatuses[30] !== 429) {
+  if (rateStatuses.some((status) => ![400, 429].includes(status)) || !rateStatuses.includes(429)) {
     throw new Error("proxy rate limit did not return expected status");
   }
 
