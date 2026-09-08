@@ -1146,7 +1146,12 @@ function ensureBrowserPlanSteps(task) {
   task.steps = parsed.steps.map((step) => {
     const old = previousById.get(step.id);
     const oldDone = old?.status === "done" && browserStepEvidenceIsValid(old);
-    return old ? { ...step, status: oldDone ? "done" : (BROWSER_STEP_STATUSES.has(old.status) && old.status !== "done" ? old.status : step.status), evidence: oldDone ? old.evidence : null } : step;
+    if (!old) return step;
+    // Checkpoint persistence runs while the executor holds this exact object.
+    // Preserve its identity and reconciled targets so completion is durable.
+    old.status = oldDone ? "done" : (BROWSER_STEP_STATUSES.has(old.status) && old.status !== "done" ? old.status : step.status);
+    old.evidence = oldDone ? old.evidence : null;
+    return old;
   });
   task.planValidation = validateBrowserPlanDependencies(task.steps);
   if (typeof task.nextStepId !== "string" || !task.steps.some((step) => step.id === task.nextStepId && step.status !== "done")) task.nextStepId = task.steps.find((step) => step.status !== "done" && browserStepDependenciesDone(task, step))?.id || task.steps.find((step) => step.status !== "done")?.id || null;
@@ -1803,6 +1808,7 @@ async function approveAgentExecution() {
 
 async function executeBrowserPlanSteps(workspace, task, generationId) {
   reconcileBrowserPlanTargets(task);
+  const attemptedSteps = new Set();
   if (task.planValidation && !task.planValidation.ok) {
     for (const step of task.steps || []) if (step.status !== "done") step.status = "blocked";
     task.nextStepId = task.steps.find((step) => step.status === "blocked")?.id || null;
@@ -1835,6 +1841,8 @@ async function executeBrowserPlanSteps(workspace, task, generationId) {
       await persistBrowserTaskState(workspace, task);
       throw new Error(`Step ${step.id} is blocked by unfinished dependencies.`);
     }
+    if (attemptedSteps.has(step.id)) throw new Error(`Step ${step.id} did not retain its completion checkpoint; execution stopped.`);
+    attemptedSteps.add(step.id);
     step.status = "running";
     task.nextStepId = step.id;
     task.checkpoint = { stepId: step.id, phase: "started", runId: generationId, at: new Date().toISOString() };
@@ -1850,7 +1858,7 @@ async function executeBrowserPlanSteps(workspace, task, generationId) {
         const before = await readTaskFileIfPresent(workspace, task.id, file.name);
         const savedCheckpoint = task.fileCheckpoints?.[file.name];
         const savedNames = new Set((task.artifactProgress?.saved || []).map((name) => typeof name === "string" ? name : name?.name).filter(Boolean));
-        if (before && (savedCheckpoint?.status === "saved" || savedNames.has(file.name))
+        if (before && savedCheckpoint?.status === "saved" && savedCheckpoint.stepId === step.id
           && (!savedCheckpoint?.revision || Number(savedCheckpoint.revision) === Number(before.version))
           && (!savedCheckpoint?.hash || savedCheckpoint.hash === before.hash)) {
           stepRecords[file.name] = before;
