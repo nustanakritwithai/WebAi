@@ -208,6 +208,16 @@ check(
   "desktop shell keeps center chat and right workspace as direct regions",
   /html\[data-shell="three-pane"\]\s+\.appShell[\s\S]{0,240}?grid-template-columns\s*:\s*var\(--shell-left\)\s+minmax\(360px,\s*1fr\)\s+var\(--shell-right\)/i.test(html),
 );
+check(
+  "desktop left rail is explicitly visible and anchored",
+  /html\[data-main-ui="v2"\]\[data-shell="three-pane"\]\s+\.appShell\s*>\s*\.rail\s*\{[\s\S]{0,260}?display\s*:\s*flex\s*!important[\s\S]{0,260}?visibility\s*:\s*visible\s*!important[\s\S]{0,260}?transform\s*:\s*none\s*!important/i.test(uiCss),
+);
+check(
+  "resize restores the desktop rail and releases mobile rail styles",
+  /rail\.style\.display\s*=\s*["']flex["'][\s\S]{0,260}rail\.style\.transform\s*=\s*["']none["'][\s\S]{0,700}removeProperty\(property\)/.test(uiSource)
+    && /["']visibility["']/.test(uiSource)
+    && /["']transform["']/.test(uiSource),
+);
 
 // Plan now belongs to the central answer stream.  Assert the runtime move and
 // the layout hooks that keep the active center/right regions vertically ordered.

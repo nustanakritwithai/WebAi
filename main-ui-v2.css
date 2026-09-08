@@ -421,7 +421,11 @@ html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane{
 
   html[data-main-ui="v2"][data-shell="three-pane"] .appShell > .rail{
     grid-column:1;
+    display:flex !important;
+    visibility:visible !important;
+    opacity:1 !important;
     position:relative;
+    transform:none !important;
     width:auto !important;
     overflow-x:hidden !important;
     overflow-y:auto !important;

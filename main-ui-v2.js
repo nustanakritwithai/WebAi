@@ -243,6 +243,14 @@
         rail.style.gridColumn = "1";
         main.style.gridColumn = "2";
         workspacePane.style.gridColumn = "3";
+        // A legacy responsive rule can leave the rail hidden or translated
+        // after a resize. Desktop is always a three-pane shell, so restore
+        // the rail's visible state explicitly here.
+        rail.style.display = "flex";
+        rail.style.visibility = "visible";
+        rail.style.opacity = "1";
+        rail.style.position = "relative";
+        rail.style.transform = "none";
         [rail, main, workspacePane].forEach((pane) => {
           pane.style.gridRow = "1";
           pane.style.minWidth = "0";
@@ -253,7 +261,7 @@
 
       // Let the existing mobile drawer and Chat/Workspace rules take over.
       [appShell, rail, main, workspacePane].forEach((node) => {
-        ["display", "grid-template-columns", "grid-template-rows", "height", "min-height", "overflow", "grid-column", "grid-row", "min-width"].forEach((property) => node.style.removeProperty(property));
+        ["display", "grid-template-columns", "grid-template-rows", "height", "min-height", "overflow", "grid-column", "grid-row", "min-width", "visibility", "opacity", "position", "transform"].forEach((property) => node.style.removeProperty(property));
       });
     };
 
