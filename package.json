@@ -15,6 +15,8 @@
     "browser-preview-regression": "node scripts/browser-preview-regression.mjs",
     "step-executor-contract": "node scripts/step-executor-contract.mjs",
     "step-executor-smoke": "node scripts/step-executor-smoke.mjs",
+    "follow-up-command-regression": "node --test scripts/follow-up-command-regression.mjs",
+    "step-loop-regression": "node --test scripts/step-loop-regression.mjs",
     "native-worker-smoke": "node scripts/native-worker-smoke.mjs",
     "memory-smoke": "node scripts/browser-memory-smoke.mjs",
     "ecc-smoke": "node scripts/ecc-smoke.mjs",
@@ -23,6 +25,6 @@
     "verification-state-smoke": "node scripts/verification-state-smoke.mjs",
     "snapshot-smoke": "node scripts/snapshot-smoke.mjs",
     "recovery-smoke": "node scripts/recovery-smoke.mjs",
-    "test": "node scripts/smoke.mjs && node scripts/browser-memory-smoke.mjs && node scripts/ecc-smoke.mjs && node scripts/agent-smoke.mjs && node scripts/browser-agent-contract.mjs && node scripts/ui-shell-contract.mjs && node scripts/workspace-step-regression.mjs && node scripts/step-readback-regression.mjs && node scripts/step-executor-contract.mjs && node scripts/step-executor-smoke.mjs && node scripts/browser-preview-regression.mjs && node scripts/native-worker-smoke.mjs && node scripts/diff-evidence-smoke.mjs && node scripts/verification-engine-smoke.mjs && node scripts/verification-state-smoke.mjs && node scripts/snapshot-smoke.mjs && node scripts/recovery-smoke.mjs && node scripts/core-smoke.mjs"
+    "test": "node scripts/smoke.mjs && node scripts/browser-memory-smoke.mjs && node scripts/ecc-smoke.mjs && node scripts/agent-smoke.mjs && node scripts/browser-agent-contract.mjs && node scripts/ui-shell-contract.mjs && node scripts/workspace-step-regression.mjs && node scripts/step-readback-regression.mjs && node scripts/step-executor-contract.mjs && node scripts/step-executor-smoke.mjs && node --test scripts/follow-up-command-regression.mjs && node scripts/browser-preview-regression.mjs && node scripts/native-worker-smoke.mjs && node scripts/diff-evidence-smoke.mjs && node scripts/verification-engine-smoke.mjs && node scripts/verification-state-smoke.mjs && node scripts/snapshot-smoke.mjs && node scripts/recovery-smoke.mjs && node scripts/core-smoke.mjs"
   }
 }

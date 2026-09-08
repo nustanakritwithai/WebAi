@@ -49,11 +49,14 @@ function createHarness({ records = {}, failRequest = 0 } = {}) {
     isCurrentGeneration: () => true,
     artifactKindForName: () => 'javascript', CONTINUE_HANDOFF_INSTRUCTION: 'continue',
     buildBrowserTaskHandoff: () => ({}), boundedUtf8: s => s, AGENT_MODEL_CONTEXT_MAX_FILE_BYTES: 12000,
-    requestBrowserAgentChat: async messages => {
+    requestBrowserAgentChat: async (messages, memoryMode, taskId, options) => {
       const target = messages[1].content.match(/\nTarget: ([^\n]+)/)?.[1];
       const stepId = messages[1].content.match(/\nNext unfinished step id: ([^\n]+)/)?.[1];
       assert.ok(target && stepId, 'request identifies its file and step');
-      requests.push({ target, stepId, messages });
+      assert.equal(memoryMode, 'browser-artifact');
+      assert.equal(taskId, 'BROWSER-12345678');
+      assert.ok(options.context.startsWith(`Target file ${target}:\n`), 'file context identifies its target');
+      requests.push({ target, stepId, messages, options });
       assert.ok(requests.length <= 16, 'executor must terminate within the request budget');
       if (requests.length === failRequest) throw tokenError;
       return `/* ${stepId}: ${target}; request ${requests.length} */`;
@@ -183,7 +186,9 @@ for (const reload of [false, true]) {
     assert.equal(task.steps[0].evidence.readback.files['style.css'].revision, 1);
     assert.equal(task.steps[1].evidence.readback.files['app.js'].revision, 2);
     assert.equal(task.fileCheckpoints['app.js'].stepId, 'two');
-    assert.ok(harness.requests.at(-1).messages[1].content.includes(firstRecord.content), 'next step receives saved file context');
+    assert.equal(harness.requests.at(-1).options.context,
+      `Target file app.js:\nrevision ${firstRecord.version}\n${firstRecord.content}`,
+      'next step receives the saved file revision and full content through the context argument');
     const finishedRequests = harness.requests.length;
     const finishedEvents = harness.events.length;
     await harness.run(task, 'resume-again');
