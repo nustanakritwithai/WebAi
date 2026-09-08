@@ -164,14 +164,25 @@
 
     const workspaceHead = workspace?.querySelector(".sectionHead");
     let toggle;
+    let fullscreenToggle;
     if (workspaceHead) {
+      const actions = workspaceHead.querySelector(".sectionActions") || el("div", "sectionActions workspaceShellActions");
+      if (!actions.parentElement) workspaceHead.appendChild(actions);
       toggle = el("button", "shellWorkspaceToggle", "Hide workspace");
       toggle.id = "workspaceCollapseBtn";
       toggle.type = "button";
       toggle.setAttribute("aria-expanded", "true");
       toggle.dataset.action = "collapse-workspace";
-      const actions = workspaceHead.querySelector(".sectionActions");
-      (actions || workspaceHead).appendChild(toggle);
+      actions.appendChild(toggle);
+      fullscreenToggle = workspaceHead.querySelector("#workspaceFullscreenBtn");
+      if (!fullscreenToggle) {
+        fullscreenToggle = el("button", "shellWorkspaceToggle", "Fullscreen Workspace");
+        fullscreenToggle.id = "workspaceFullscreenBtn";
+        fullscreenToggle.type = "button";
+        fullscreenToggle.setAttribute("aria-pressed", "false");
+        fullscreenToggle.setAttribute("aria-label", "ขยาย Workspace เต็มพื้นที่");
+        actions.appendChild(fullscreenToggle);
+      }
     }
 
     const resize = el("div", "shellResizeHandle");
@@ -194,7 +205,7 @@
     reveal.setAttribute("aria-controls", "workspace");
     reveal.setAttribute("aria-expanded", "true");
     header?.appendChild(reveal);
-    wireShellControls({ root, rail, workspacePane, workspace, files, menu, toggle, reveal, resize, chatButton, workspaceButton });
+    wireShellControls({ root, rail, workspacePane, workspace, files, menu, toggle, fullscreenToggle, reveal, resize, chatButton, workspaceButton });
     enforcePaneLayout({ appShell, rail, main, workspacePane });
   }
 
@@ -313,7 +324,7 @@
     });
   }
 
-  function wireShellControls({ root, rail, workspacePane, workspace, files, menu, toggle, reveal, resize, chatButton, workspaceButton }) {
+  function wireShellControls({ root, rail, workspacePane, workspace, files, menu, toggle, fullscreenToggle, reveal, resize, chatButton, workspaceButton }) {
     const setDrawer = (open) => { root.dataset.drawerOpen = String(open); menu.setAttribute("aria-expanded", String(open)); };
     menu.addEventListener("click", () => setDrawer(root.dataset.drawerOpen !== "true"));
     const setPanel = (panel) => {
@@ -322,6 +333,20 @@
       workspaceButton.classList.toggle("active", panel === "workspace");
       chatButton.setAttribute("aria-pressed", String(panel === "chat"));
       workspaceButton.setAttribute("aria-pressed", String(panel === "workspace"));
+    };
+    const setWorkspaceFullscreen = (fullscreen) => {
+      const nextFullscreen = Boolean(fullscreen);
+      root.dataset.workspaceFullscreen = String(nextFullscreen);
+      if (fullscreenToggle) {
+        fullscreenToggle.textContent = nextFullscreen ? "Exit fullscreen" : "Fullscreen Workspace";
+        fullscreenToggle.setAttribute("aria-pressed", String(nextFullscreen));
+        fullscreenToggle.setAttribute("aria-label", nextFullscreen ? "คืนค่า Workspace ขนาดปกติ" : "ขยาย Workspace เต็มพื้นที่");
+      }
+      if (nextFullscreen) {
+        setWorkspaceCollapsed(false);
+        if (window.matchMedia("(max-width: 900px)").matches) setPanel("workspace");
+        workspacePane.focus?.({ preventScroll: true });
+      }
     };
     const setWorkspaceCollapsed = (collapsed, options = {}) => {
       const userInitiated = options.userInitiated === true;
@@ -356,16 +381,23 @@
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
+        if (root.dataset.workspaceFullscreen === "true") {
+          event.preventDefault();
+          setWorkspaceFullscreen(false);
+          return;
+        }
         setDrawer(false);
         if (window.matchMedia("(max-width: 900px)").matches) setPanel("chat");
       }
     });
     const toggleWorkspace = () => {
+      if (root.dataset.workspaceFullscreen === "true") setWorkspaceFullscreen(false);
       const collapsed = root.dataset.workspaceCollapsed === "true";
       setWorkspaceCollapsed(!collapsed, { userInitiated: true });
     };
     toggle?.addEventListener("click", toggleWorkspace);
     reveal.addEventListener("click", toggleWorkspace);
+    fullscreenToggle?.addEventListener("click", () => setWorkspaceFullscreen(root.dataset.workspaceFullscreen !== "true"));
     let resizing = false;
     const stop = () => { resizing = false; document.body.style.removeProperty("user-select"); };
     resize.addEventListener("pointerdown", (event) => { resizing = true; resize.setPointerCapture?.(event.pointerId); document.body.style.userSelect = "none"; });
@@ -399,7 +431,8 @@
     });
     setWorkspaceView({ root, workspacePane, workspace, files }, "files");
     setWorkspaceCollapsed(false);
-    root.__webAiShell = { setWorkspaceCollapsed, setWorkspaceView: (view) => setWorkspaceView({ root, workspacePane, workspace, files }, view), setPanel };
+    setWorkspaceFullscreen(false);
+    root.__webAiShell = { setWorkspaceCollapsed, setWorkspaceFullscreen, setWorkspaceView: (view) => setWorkspaceView({ root, workspacePane, workspace, files }, view), setPanel };
   }
 
   function upgradeNavigation() {

@@ -196,6 +196,35 @@ check(
   "system shell events restore the workspace without granting collapse state",
   /setWorkspaceCollapsed\(false\)/.test(uiSource) && /delete root\.dataset\.workspaceCollapseSource/.test(uiSource),
 );
+check(
+  "workspace exposes an explicit fullscreen control",
+  id("workspaceFullscreenBtn")?.tag === "button"
+    && /fullscreenToggle\?\.addEventListener\("click",\s*\(\)\s*=>\s*setWorkspaceFullscreen\(/.test(uiSource),
+);
+check(
+  "workspace fullscreen starts normal and has an accessible restore label",
+  /setWorkspaceFullscreen\(false\)/.test(uiSource)
+    && /nextFullscreen\s*\?\s*["']Exit fullscreen["']\s*:\s*["']Fullscreen Workspace["']/.test(uiSource)
+    && /aria-label.*คืนค่า Workspace ขนาดปกติ/.test(uiSource),
+);
+check(
+  "Escape exits explicit workspace fullscreen",
+  /if \(root\.dataset\.workspaceFullscreen === ["']true["']\)[\s\S]{0,220}setWorkspaceFullscreen\(false\)/.test(uiSource),
+);
+check(
+  "fullscreen CSS is opt-in and keeps the normal pane size",
+  /data-workspace-fullscreen="true"/.test(uiCss)
+    && /position:\s*fixed\s*!important/.test(uiCss)
+    && /workspacePane\s*>\s*#workspace[\s\S]{0,180}flex:\s*1 1 auto/.test(uiCss),
+);
+const viewHandlerSource = uiSource.slice(uiSource.indexOf("function setWorkspaceView"), uiSource.indexOf("function wireShellControls"));
+const layoutHandlerSource = uiSource.slice(uiSource.indexOf("function enforcePaneLayout"), uiSource.indexOf("function setWorkspaceView"));
+check(
+  "tabs and resize never auto-enable workspace fullscreen",
+  viewHandlerSource !== "" && layoutHandlerSource !== ""
+    && !/setWorkspaceFullscreen\(true\)/.test(viewHandlerSource)
+    && !/setWorkspaceFullscreen\(true\)/.test(layoutHandlerSource),
+);
 
 // The shell must remain horizontal on desktop. A viewport below this contract's
 // tablet breakpoint intentionally becomes a single active pane, but the desktop

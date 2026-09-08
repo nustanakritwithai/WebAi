@@ -1185,3 +1185,82 @@ html[data-main-ui="v2"][data-shell="three-pane"] #tab-preview.active .previewCan
     height:100%;
   }
 }
+
+/* Workspace sizing is stable by default. The active Files/Preview/Diff/Tests
+   view fills the existing right pane; only the explicit button adds the
+   fullscreen overlay state. */
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceSection > .sectionHead{
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceSection > .sectionHead > .workspaceTabs{
+  flex:1 1 220px;
+  min-width:0;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspaceShellActions{
+  display:flex;
+  flex:0 0 auto;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #workspace,
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #fileWorkspace{
+  flex:1 1 auto;
+  min-height:0;
+}
+
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #workspace > .workspaceGrid,
+html[data-main-ui="v2"][data-shell="three-pane"] .workspacePane > #fileWorkspace > .fileWorkspaceGrid{
+  min-height:0;
+  height:100%;
+}
+
+/* Fullscreen is deliberately opt-in. It covers the shell below the topbar,
+   preserves the workspace toolbar/active view, and leaves normal pane sizing
+   untouched until the user presses the control. */
+html[data-main-ui="v2"][data-shell="three-pane"][data-workspace-fullscreen="true"],
+html[data-main-ui="v2"][data-shell="three-pane"][data-workspace-fullscreen="true"] body{
+  overflow:hidden;
+}
+
+@media(min-width:901px){
+  html[data-main-ui="v2"][data-shell="three-pane"][data-workspace-fullscreen="true"] .appShell > .rail,
+  html[data-main-ui="v2"][data-shell="three-pane"][data-workspace-fullscreen="true"] .appShell > .main{
+    visibility:hidden;
+    pointer-events:none;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"][data-workspace-fullscreen="true"] .appShell > .workspacePane{
+    position:fixed !important;
+    inset:64px 0 0;
+    z-index:70;
+    display:flex !important;
+    width:auto !important;
+    height:auto !important;
+    max-height:none;
+    border-left:0;
+    overflow:hidden !important;
+    box-shadow:0 18px 60px rgba(0,0,0,.34);
+  }
+}
+
+@media(max-width:900px){
+  html[data-main-ui="v2"][data-shell="three-pane"][data-workspace-fullscreen="true"] .workspacePane{
+    position:fixed !important;
+    inset:58px 0 0;
+    z-index:70;
+    display:flex !important;
+    width:auto;
+    max-height:none;
+    overflow:hidden !important;
+  }
+
+  html[data-main-ui="v2"][data-shell="three-pane"][data-workspace-fullscreen="true"] .main{
+    display:none !important;
+  }
+}
