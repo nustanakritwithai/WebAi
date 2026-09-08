@@ -182,6 +182,20 @@ check(
   "Files and Preview use mutually exclusive top-level views",
   /workspaceGrid\.hidden\s*=\s*fileView/.test(uiSource) && /files\.hidden\s*=\s*!fileView/.test(uiSource),
 );
+check(
+  "desktop workspace collapse requires an explicit user action",
+  /const setWorkspaceCollapsed\s*=\s*\(collapsed,\s*options\s*=\s*\{\}\)[\s\S]{0,900}nextCollapsed\s*=\s*Boolean\(collapsed && \(!desktop \|\| userInitiated\)\)/.test(uiSource)
+    && /setWorkspaceCollapsed\(!collapsed,\s*\{\s*userInitiated:\s*true\s*\}\)/.test(uiSource),
+);
+check(
+  "workspace hiding CSS is scoped to the explicit user collapse state",
+  /data-workspace-collapsed="true"\]\[data-workspace-collapse-source="user"/.test(html)
+    && /data-workspace-collapsed="true"\]\[data-workspace-collapse-source="user"/.test(uiCss),
+);
+check(
+  "system shell events restore the workspace without granting collapse state",
+  /setWorkspaceCollapsed\(false\)/.test(uiSource) && /delete root\.dataset\.workspaceCollapseSource/.test(uiSource),
+);
 
 // The shell must remain horizontal on desktop. A viewport below this contract's
 // tablet breakpoint intentionally becomes a single active pane, but the desktop

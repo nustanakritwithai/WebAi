@@ -30,8 +30,8 @@
     html[data-shell="three-pane"] .workspacePane .sectionHead { margin-top: 0; }
     html[data-shell="three-pane"] .workspacePane .fileWorkspaceSection { border-top: 1px solid rgba(98,128,169,.16); }
     html[data-shell="three-pane"] .workspacePane .lowerGrid { border-top: 1px solid rgba(98,128,169,.16); }
-    html[data-shell="three-pane"][data-workspace-collapsed="true"] .workspacePane { display: none; }
-    html[data-shell="three-pane"][data-workspace-collapsed="true"] .appShell { grid-template-columns: var(--shell-left) minmax(360px, 1fr); }
+    html[data-shell="three-pane"][data-workspace-collapsed="true"][data-workspace-collapse-source="user"] .workspacePane { display: none; }
+    html[data-shell="three-pane"][data-workspace-collapsed="true"][data-workspace-collapse-source="user"] .appShell { grid-template-columns: var(--shell-left) minmax(360px, 1fr); }
     .shellWorkspaceToggle, .shellMenuToggle { min-height: 38px; border: 1px solid rgba(115,145,184,.22); border-radius: 10px; background: rgba(17,31,51,.78); color: inherit; cursor: pointer; padding: 7px 10px; }
     .shellMenuToggle { display: none; }
     .shellMobileSwitch { display: none; gap: 4px; margin-left: auto; }

@@ -204,8 +204,8 @@ html[data-main-ui="v2"] :where(.workspaceGrid pre,.workspaceGrid code,.workspace
   html[data-main-ui="v2"] :where(.resizeHandle,.paneResizeHandle):hover,html[data-main-ui="v2"] :where(.resizeHandle,.paneResizeHandle):focus-visible{background:rgba(106,168,255,.28)}
   html[data-main-ui="v2"] :where(.railCollapsed) .appShell{grid-template-columns:64px minmax(360px,45fr) minmax(400px,55fr)}
   html[data-main-ui="v2"] :where(.railCollapsed) .railItem b,html[data-main-ui="v2"] :where(.railCollapsed) .railItem em,html[data-main-ui="v2"] :where(.railCollapsed) .railTitle{display:none}
-  html[data-main-ui="v2"] :where(.workspaceCollapsed) .appShell{grid-template-columns:240px minmax(360px,1fr) 0}
-  html[data-main-ui="v2"] :where(.workspaceCollapsed) :where(.workspacePane,.workspacePanel,.workspaceShell,.workspaceSection){display:none}
+  html[data-main-ui="v2"][data-workspace-collapsed="true"][data-workspace-collapse-source="user"] .appShell{grid-template-columns:240px minmax(360px,1fr) 0}
+  html[data-main-ui="v2"][data-workspace-collapsed="true"][data-workspace-collapse-source="user"] :where(.workspacePane,.workspacePanel,.workspaceShell,.workspaceSection){display:none}
 }
 
 /* Tablet: retain split panes where there is room; otherwise let the app's

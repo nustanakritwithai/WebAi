@@ -315,15 +315,23 @@
       chatButton.setAttribute("aria-pressed", String(panel === "chat"));
       workspaceButton.setAttribute("aria-pressed", String(panel === "workspace"));
     };
-    const setWorkspaceCollapsed = (collapsed) => {
-      root.dataset.workspaceCollapsed = String(collapsed);
+    const setWorkspaceCollapsed = (collapsed, options = {}) => {
+      const userInitiated = options.userInitiated === true;
+      const desktop = window.matchMedia("(min-width: 901px)").matches;
+      // Desktop Workspace is persistent by default. Only an actual click on
+      // the hide/reveal controls may collapse it; system calls used by tabs,
+      // task navigation, preview, and resize are never allowed to do so.
+      const nextCollapsed = Boolean(collapsed && (!desktop || userInitiated));
+      root.dataset.workspaceCollapsed = String(nextCollapsed);
+      if (nextCollapsed && userInitiated) root.dataset.workspaceCollapseSource = "user";
+      else delete root.dataset.workspaceCollapseSource;
       if (toggle) {
-        toggle.textContent = collapsed ? "Show workspace" : "Hide workspace";
-        toggle.setAttribute("aria-expanded", String(!collapsed));
+        toggle.textContent = nextCollapsed ? "Show workspace" : "Hide workspace";
+        toggle.setAttribute("aria-expanded", String(!nextCollapsed));
       }
-      reveal.textContent = collapsed ? "Show workspace" : "Workspace";
-      reveal.setAttribute("aria-expanded", String(!collapsed));
-      if (window.matchMedia("(max-width: 900px)").matches) setPanel(collapsed ? "chat" : "workspace");
+      reveal.textContent = nextCollapsed ? "Show workspace" : "Workspace";
+      reveal.setAttribute("aria-expanded", String(!nextCollapsed));
+      if (!desktop) setPanel(nextCollapsed ? "chat" : "workspace");
     };
     rail.addEventListener("click", (event) => {
       const link = event.target.closest("a");
@@ -346,7 +354,7 @@
     });
     const toggleWorkspace = () => {
       const collapsed = root.dataset.workspaceCollapsed === "true";
-      setWorkspaceCollapsed(!collapsed);
+      setWorkspaceCollapsed(!collapsed, { userInitiated: true });
     };
     toggle?.addEventListener("click", toggleWorkspace);
     reveal.addEventListener("click", toggleWorkspace);
