@@ -24,15 +24,12 @@ assert.doesNotMatch(repairedCss, /\burl\s*\(/i, "CSS preview removes resource UR
 
 assert.match(core, /repairStoredPreviewFiles\(workspace, task, records\)/, "Run Preview repairs stored task files");
 assert.match(core, /source: "browser-preview-repair"/, "preview repair is persisted as a task revision");
-assert.match(core, /frameStyle = .*html,body\{width:100%/, "generated document receives a full-viewport frame style");
-assert.match(core, /body>:first-child\.webai-fluid-root/, "sparse first-child layouts receive full-height treatment");
-assert.match(core, /#root\.webai-fluid-root/, "generated #root layouts receive full-height treatment");
-assert.match(core, /#app\.webai-fluid-root/, "generated #app layouts receive full-height treatment");
-assert.match(core, /main\.webai-fluid-root/, "generated main layouts receive full-height treatment");
-assert.match(core, /data-webai-fixed-size/, "fixed-size demos can opt out of fluid root treatment");
-assert.match(core, /classList\.add\('webai-fluid-root'\)/, "preview runtime marks sparse roots before app code runs");
+assert.match(core, /frameStyle = .*html,body\{width:100%/, "generated document keeps sensible frame width defaults");
+assert.match(core, /body\{box-sizing:border-box;margin:0!important;overflow:auto\}/, "generated document keeps sensible body defaults");
+assert.doesNotMatch(core, /webai-fluid-root|frameLayoutRuntime = `<script>/, "preview does not force generated app roots to full height");
+assert.doesNotMatch(core, /querySelectorAll\('body>:first-child,#root,#app,main'\)/, "preview does not rewrite generated root layout");
 assert.match(css, /#tab-preview\.active\{[\s\S]*?display:flex/, "preview panel becomes a vertical flex region");
 assert.match(css, /#tab-preview \.previewCanvas\{[\s\S]*?flex:1 1 auto/, "preview canvas consumes remaining panel height");
 assert.match(css, /#tab-preview \.workspacePreviewFrame\{[\s\S]*?height:100%/, "preview iframe fills the canvas");
 
-console.log("PASS browser preview regression: local-only repair and full-frame rendering");
+console.log("PASS browser preview regression: local-only repair and full workspace frame rendering");
