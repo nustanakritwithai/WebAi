@@ -1154,7 +1154,7 @@ function ensureBrowserPlanSteps(task) {
     return old;
   });
   task.planValidation = validateBrowserPlanDependencies(task.steps);
-  if (typeof task.nextStepId !== "string" || !task.steps.some((step) => step.id === task.nextStepId && step.status !== "done")) task.nextStepId = task.steps.find((step) => step.status !== "done" && browserStepDependenciesDone(task, step))?.id || task.steps.find((step) => step.status !== "done")?.id || null;
+  if (typeof task.nextStepId !== "string" || !task.steps.some((step) => step.id === task.nextStepId && step.status !== "done" && browserStepDependenciesDone(task, step))) task.nextStepId = task.steps.find((step) => step.status !== "done" && browserStepDependenciesDone(task, step))?.id || task.steps.find((step) => step.status !== "done")?.id || null;
   return task.steps;
 }
 
@@ -1163,7 +1163,12 @@ function reconcileBrowserPlanTargets(task) {
   const names = (Array.isArray(task.artifactManifest) ? task.artifactManifest : []).map((file) => typeof file === "string" ? file : file?.name).filter(Boolean);
   if (!names.length || !steps.length) return steps;
   const allowed = new Set(names);
-  steps.forEach((step) => { step.targetFiles = step.targetFiles.filter((name) => allowed.has(name)); });
+  steps.forEach((step, index) => {
+    step.targetFiles = browserStepFiles(step.targetFiles).filter((name) => allowed.has(name));
+    // The manifest can arrive after planning (notably for document tasks).
+    // Give steps whose provisional targets disappeared real manifest targets.
+    if (!step.targetFiles.length) step.targetFiles = inferBrowserStepFiles(step.title, "", index, steps.length, names);
+  });
   const assigned = new Set(steps.flatMap((step) => step.targetFiles));
   const missing = names.filter((name) => !assigned.has(name));
   const isFollowUp = Number(task.planVersion) > 1 || (Array.isArray(task.goalHistory) && task.goalHistory.length > 1);
@@ -1180,10 +1185,10 @@ function nextBrowserStep(task) {
   const steps = ensureBrowserPlanSteps(task);
   if (task.planValidation && !task.planValidation.ok) return null;
   const requested = typeof task.nextStepId === "string" ? steps.find((step) => step.id === task.nextStepId) : null;
-  if (requested) return ["pending", "failed", "running"].includes(requested.status) ? requested : null;
+  if (requested && ["pending", "failed", "running", "blocked"].includes(requested.status) && browserStepDependenciesDone(task, requested)) return requested;
   const running = steps.find((step) => step.status === "running" && browserStepDependenciesDone(task, step));
   if (running) return running;
-  return steps.find((step) => ["pending", "failed"].includes(step.status) && browserStepDependenciesDone(task, step)) || null;
+  return steps.find((step) => ["pending", "failed", "blocked"].includes(step.status) && browserStepDependenciesDone(task, step)) || null;
 }
 
 function browserTaskTodoDocument(task) {
@@ -1235,14 +1240,17 @@ async function taskFileWithExpectedRevision(workspace, task, name, content) {
   return { name, content, expectedRevision: Number(current?.version) || 0, ...(current?.hash ? { expectedHash: current.hash } : {}) };
 }
 
-async function persistBrowserTaskState(workspace, task) {
+async function persistBrowserTaskState(workspace, task, generationId) {
   if (!workspace?.writeTaskFiles || !task?.id) return;
+  if (generationId !== undefined && !isCurrentGeneration(task, generationId)) return;
   ensureBrowserPlanSteps(task);
   const files = await Promise.all([
     taskFileWithExpectedRevision(workspace, task, "TASK.json", JSON.stringify(browserTaskMetadata(task), null, 2)),
     taskFileWithExpectedRevision(workspace, task, "TODO.md", browserTaskTodoDocument(task))
   ]);
+  if (generationId !== undefined && !isCurrentGeneration(task, generationId)) return;
   await workspace.writeTaskFiles(task.id, files, { source: "browser-agent-step-executor", taskId: task.id });
+  if (generationId !== undefined && !isCurrentGeneration(task, generationId)) return;
   saveBrowserAgentTask();
 }
 
@@ -1273,7 +1281,7 @@ function stepEvidenceForReadback(step, records, folder) {
     const record = records?.[expectedPath] || Object.values(records || {}).find((candidate) => candidate?.path === expectedPath);
     return [name, readbackEvidenceForRecord(record, expectedPath)];
   }));
-  const complete = Object.values(files).length === step.targetFiles.length
+  const complete = step.targetFiles.length > 0 && Object.values(files).length === step.targetFiles.length
     && Object.values(files).every((item) => item.ok);
   return { readback: { ok: complete, files }, at: new Date().toISOString() };
 }
@@ -1807,38 +1815,42 @@ async function approveAgentExecution() {
 }
 
 async function executeBrowserPlanSteps(workspace, task, generationId) {
+  if (!isCurrentGeneration(task, generationId)) return;
   reconcileBrowserPlanTargets(task);
   const attemptedSteps = new Set();
   if (task.planValidation && !task.planValidation.ok) {
     for (const step of task.steps || []) if (step.status !== "done") step.status = "blocked";
     task.nextStepId = task.steps.find((step) => step.status === "blocked")?.id || null;
     task.checkpoint = { stepId: task.nextStepId, phase: "plan_invalid", errors: task.planValidation.errors, at: new Date().toISOString() };
-    await persistBrowserTaskState(workspace, task);
+    await persistBrowserTaskState(workspace, task, generationId);
+    if (!isCurrentGeneration(task, generationId)) return;
     throw new Error(`Invalid Browser Agent plan: ${task.planValidation.errors.join("; ")}`);
   }
   while (true) {
     if (!isCurrentGeneration(task, generationId)) return;
     const step = nextBrowserStep(task);
     if (!step) {
-      const blocked = task.steps.find((candidate) => candidate.status !== "done" && !browserStepDependenciesDone(task, candidate));
+      const blocked = task.steps.find((candidate) => candidate.status !== "done");
       if (blocked) {
         blocked.status = "blocked";
         task.nextStepId = blocked.id;
         task.checkpoint = { stepId: blocked.id, phase: "blocked", reason: `Dependencies are not complete: ${blocked.dependencies.join(", ")}`, at: new Date().toISOString() };
         addBrowserAgentEvent("step_blocked", `${blocked.id}: dependencies are not complete`);
-        await persistBrowserTaskState(workspace, task);
+        await persistBrowserTaskState(workspace, task, generationId);
+        if (!isCurrentGeneration(task, generationId)) return;
         throw new Error(`Step ${blocked.id} is blocked by unfinished dependencies.`);
       }
       task.artifactProgress.pending = [];
       task.nextStepId = null;
-      await persistBrowserTaskState(workspace, task);
+      await persistBrowserTaskState(workspace, task, generationId);
       return;
     }
     if (!browserStepDependenciesDone(task, step)) {
       step.status = "blocked";
       task.nextStepId = step.id;
       task.checkpoint = { stepId: step.id, phase: "blocked", reason: `Dependencies are not complete: ${(step.dependencies || []).join(", ")}`, at: new Date().toISOString() };
-      await persistBrowserTaskState(workspace, task);
+      await persistBrowserTaskState(workspace, task, generationId);
+      if (!isCurrentGeneration(task, generationId)) return;
       throw new Error(`Step ${step.id} is blocked by unfinished dependencies.`);
     }
     if (attemptedSteps.has(step.id)) throw new Error(`Step ${step.id} did not retain its completion checkpoint; execution stopped.`);
@@ -1847,20 +1859,25 @@ async function executeBrowserPlanSteps(workspace, task, generationId) {
     task.nextStepId = step.id;
     task.checkpoint = { stepId: step.id, phase: "started", runId: generationId, at: new Date().toISOString() };
     addBrowserAgentEvent("step_started", `${step.id}: ${step.title}`);
-    await persistBrowserTaskState(workspace, task);
+    await persistBrowserTaskState(workspace, task, generationId);
+    if (!isCurrentGeneration(task, generationId)) return;
     applyAgentTask(task);
     addTimeline("Step started", `${step.id} · ${step.title}`, "working");
     const stepRecords = {};
     try {
+      if (!step.targetFiles.length) throw new Error(`Step ${step.id} has no target files in the artifact manifest.`);
       for (const fileName of step.targetFiles) {
         if (!isCurrentGeneration(task, generationId)) return;
         const file = task.artifactManifest.find((entry) => entry.name === fileName) || { name: fileName, kind: artifactKindForName(fileName) };
         const before = await readTaskFileIfPresent(workspace, task.id, file.name);
+        if (!isCurrentGeneration(task, generationId)) return;
         const savedCheckpoint = task.fileCheckpoints?.[file.name];
         const savedNames = new Set((task.artifactProgress?.saved || []).map((name) => typeof name === "string" ? name : name?.name).filter(Boolean));
         if (before && savedCheckpoint?.status === "saved" && savedCheckpoint.stepId === step.id
-          && (!savedCheckpoint?.revision || Number(savedCheckpoint.revision) === Number(before.version))
-          && (!savedCheckpoint?.hash || savedCheckpoint.hash === before.hash)) {
+          && Number(savedCheckpoint.planVersion) === (Number(task.planVersion) || 1)
+          && readbackEvidenceForRecord(before, `${task.workspaceFolder}/${file.name}`).ok
+          && Number(savedCheckpoint.revision) === Number(before.version)
+          && savedCheckpoint.hash === before.hash) {
           stepRecords[file.name] = before;
           addBrowserAgentEvent("file_skipped", `${step.id} · ${file.name} already saved; checkpoint reused`);
           continue;
@@ -1868,7 +1885,7 @@ async function executeBrowserPlanSteps(workspace, task, generationId) {
         if (!before && savedNames.has(file.name)) {
           task.artifactProgress.saved = task.artifactProgress.saved.filter((name) => name !== file.name);
           task.artifactProgress.pending = [...new Set([...(task.artifactProgress.pending || []), file.name])];
-          delete task.fileCheckpoints[file.name];
+          if (task.fileCheckpoints) delete task.fileCheckpoints[file.name];
         }
         const requestFile = (repairError = "") => requestBrowserAgentChat([
           { role: "system", content: `Create only ${file.name} for implementation step ${step.id}: ${step.title}. Return exactly one fenced ${file.kind} block containing its full content, with no explanation. Keep it concise and preserve unrelated existing behavior. Step acceptance: ${step.acceptance.join("; ")}. No external URLs, network calls, backend calls, repository edits, filesystem operations, server tests, or native workers. Use local in-memory data and DOM events only. For browser index.html, include exactly one local <script src=\"app.js\"></script> reference and no inline JavaScript. If you link CSS, use only the local <link rel=\"stylesheet\" href=\"./style.css\"> reference; never use an external stylesheet.${repairError ? ` The previous version was rejected: ${repairError}. Correct that exact issue.` : ""}` },
@@ -1893,7 +1910,9 @@ async function executeBrowserPlanSteps(workspace, task, generationId) {
           if (before.hash) writeFile.expectedHash = before.hash;
         } else writeFile.expectedRevision = 0;
         const revisions = await workspace.writeTaskFiles(task.id, [writeFile], { source: "browser-agent-step", taskId: task.id });
+        if (!isCurrentGeneration(task, generationId)) return;
         const record = await readTaskFileIfPresent(workspace, task.id, file.name);
+        if (!isCurrentGeneration(task, generationId)) return;
         if (!record
           || record.path !== revisions[0]?.path
           || record.content !== content
@@ -1905,28 +1924,33 @@ async function executeBrowserPlanSteps(workspace, task, generationId) {
         task.artifactProgress.pending = task.artifactProgress.pending.filter((name) => (typeof name === "string" ? name : name.name) !== file.name);
         task.artifactProgress.saved = [...task.artifactProgress.saved.filter((name) => name !== file.name), file.name];
         task.fileCheckpoints = task.fileCheckpoints || {};
-        task.fileCheckpoints[file.name] = { status: "saved", stepId: step.id, revision: Number(record.version) || 0, hash: record.hash || revisions[0]?.hash || null, at: new Date().toISOString() };
+        task.fileCheckpoints[file.name] = { status: "saved", planVersion: Number(task.planVersion) || 1, stepId: step.id, revision: Number(record.version) || 0, hash: record.hash || revisions[0]?.hash || null, at: new Date().toISOString() };
         stepRecords[file.name] = record;
         addBrowserAgentEvent("file_saved", `${step.id} · ${file.name} saved and read back at revision ${record.version}`);
-        await persistBrowserTaskState(workspace, task);
+        await persistBrowserTaskState(workspace, task, generationId);
+        if (!isCurrentGeneration(task, generationId)) return;
         applyAgentTask(task);
         addTimeline("Artifact saved", `${step.id} · ${file.name} saved and read back from IndexedDB`, "ok");
       }
+      if (!isCurrentGeneration(task, generationId)) return;
       const evidence = stepEvidenceForReadback(step, stepRecords, task.workspaceFolder);
       if (!evidence.readback.ok) throw new Error(`Step ${step.id} readback evidence is incomplete.`);
       step.status = "done";
       step.evidence = { ...step.evidence, ...evidence };
-      task.nextStepId = task.steps.find((candidate) => candidate.status !== "done")?.id || null;
+      task.nextStepId = nextBrowserStep(task)?.id || null;
       task.checkpoint = { stepId: step.id, phase: "completed", runId: generationId, evidence: step.evidence, at: new Date().toISOString() };
       addBrowserAgentEvent("step_completed", `${step.id}: ${step.title}; readback evidence recorded`);
-      await persistBrowserTaskState(workspace, task);
+      await persistBrowserTaskState(workspace, task, generationId);
+      if (!isCurrentGeneration(task, generationId)) return;
       applyAgentTask(task);
       addTimeline("Step completed", `${step.id} · readback evidence recorded`, "ok");
     } catch (stepError) {
+      if (!isCurrentGeneration(task, generationId)) return;
       step.status = isRecoverableArtifactError(stepError) ? "running" : "failed";
       task.nextStepId = step.id;
       task.checkpoint = { stepId: step.id, phase: "error", runId: generationId, error: stepError.message, at: new Date().toISOString() };
-      await persistBrowserTaskState(workspace, task);
+      await persistBrowserTaskState(workspace, task, generationId);
+      if (!isCurrentGeneration(task, generationId)) return;
       addBrowserAgentEvent("step_failed", `${step.id}: ${stepError.message}`);
       throw stepError;
     }
@@ -1951,6 +1975,7 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
   applyActionState();
   try {
     const workspace = await getBrowserWorkspace();
+    if (!isCurrentGeneration(task, generationId)) return;
     task.workspaceFolder = task.workspaceFolder || workspace.taskFolderForId(task.id);
     ensureBrowserPlanSteps(task);
     if (!Array.isArray(task.artifactManifest) || !task.artifactManifest.length) {
@@ -1968,7 +1993,8 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
       task.artifactKind = manifest.artifactKind;
       task.artifactProgress = { pending: manifest.files.slice(), saved: [] };
       reconcileBrowserPlanTargets(task);
-      await persistBrowserTaskState(workspace, task);
+      await persistBrowserTaskState(workspace, task, generationId);
+      if (!isCurrentGeneration(task, generationId)) return;
       addBrowserAgentEvent("artifact_manifest_ready", `${manifest.files.length} file(s) planned`);
     }
     reconcileBrowserPlanTargets(task);
@@ -1979,13 +2005,16 @@ async function generateAndSaveBrowserDemo(task, trigger = "automatic") {
     task.error = "";
     task.lastFailureStage = "";
     applyAgentTask(task);
-    await persistBrowserTaskState(workspace, task);
+    await persistBrowserTaskState(workspace, task, generationId);
+    if (!isCurrentGeneration(task, generationId)) return;
     await executeBrowserPlanSteps(workspace, task, generationId);
+    if (!isCurrentGeneration(task, generationId)) return;
     task.demo = null;
     task.status = task.artifactKind === "browser" ? "awaiting_preview" : "saved";
     task.preview = null;
     task.verification = null;
-    await persistBrowserTaskState(workspace, task);
+    await persistBrowserTaskState(workspace, task, generationId);
+    if (!isCurrentGeneration(task, generationId)) return;
     addBrowserAgentEvent("files_applied", "All planned artifacts were saved and read back from revisioned IndexedDB records");
     applyAgentTask(task);
     addTimeline("Artifacts saved", `Saved ${task.appliedFiles.length} file${task.appliedFiles.length === 1 ? "" : "s"} inside ${task.workspaceFolder}`, "ok");
